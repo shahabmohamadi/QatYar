@@ -1,0 +1,12 @@
+{
+  "name": "QatYar test",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "QatYar test"
+    }
+  },
+  "postCreateCommand": "python -m pip install -r requirements.lock",
+  "postStartCommand": "bash .devcontainer/start.sh"
+}
