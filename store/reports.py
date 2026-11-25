@@ -189,6 +189,12 @@ def accounts():
       COALESCE(SUM(CASE WHEN m.direction='in' THEN m.amount_rial ELSE -m.amount_rial END),0) balance_rial
       FROM financial_accounts a LEFT JOIN money_movements m ON m.account_id=a.id
       GROUP BY a.id ORDER BY a.kind,a.id''', param='page_accounts')
+    financial_accounts = [dict(account) for account in financial_accounts]
+    for account in financial_accounts:
+        if account['id'] == 1:
+            account['balance_rial'] += opening['cash_rial']
+        elif account['id'] == 2:
+            account['balance_rial'] += opening['bank_rial']
     active_accounts = db.execute('SELECT id,name FROM financial_accounts WHERE is_active=1 ORDER BY kind,id').fetchall()
     return render_template('accounts.html', summary=summary, movements=movements,
                            opening=opening, financial_accounts=financial_accounts,
