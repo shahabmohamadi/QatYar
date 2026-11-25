@@ -1,6 +1,9 @@
 {
   "name": "QatYar test",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
   "forwardPorts": [8080],
   "portsAttributes": {
     "8080": {
