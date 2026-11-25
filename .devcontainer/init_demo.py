@@ -11,15 +11,14 @@ from store.db import connect, migrate, transaction
 
 if os.environ.get('CODESPACES') != 'true':
     raise SystemExit('Demo initialization is restricted to GitHub Codespaces.')
-password = os.environ.get('QATYAR_DEMO_PASSWORD')
-if not password:
-    raise SystemExit('QATYAR_DEMO_PASSWORD Codespaces secret is missing.')
-
 migrate()
 db = connect()
 try:
     with transaction(db):
         if not db.execute("SELECT 1 FROM users WHERE role='owner'").fetchone():
+            password = os.environ.get('QATYAR_DEMO_PASSWORD')
+            if not password:
+                raise SystemExit('QATYAR_DEMO_PASSWORD Codespaces secret is missing.')
             db.execute('INSERT INTO users(username,display_name,password_hash,role) VALUES (?,?,?,?)',
                        ('admin', 'مدیر آزمایشی', password_hash(password), 'owner'))
 finally:
