@@ -3,6 +3,7 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 
 from .auth import require_login, require_role
 from .db import get_db, transaction
+from .pagination import paginate_query
 from .opening_balances import summary as opening_summary
 from .utils import audit, integer, required
 
@@ -21,10 +22,10 @@ def dashboard():
        WHERE kind='sale' AND date(created_at,'+3 hours','+30 minutes')=date('now','+3 hours','+30 minutes')) sales_today,
       (SELECT COALESCE(SUM(total_rial),0) FROM invoices
        WHERE kind='purchase' AND date(created_at,'+3 hours','+30 minutes')=date('now','+3 hours','+30 minutes')) purchases_today''').fetchone()
-    recent = db.execute('''SELECT i.*,p.name party_name FROM invoices i
-      JOIN parties p ON p.id=i.party_id ORDER BY i.id DESC LIMIT 8''').fetchall()
+    recent, pager = paginate_query(db, '''SELECT i.*,p.name party_name FROM invoices i
+      JOIN parties p ON p.id=i.party_id ORDER BY i.id DESC''')
     legacy_import = db.execute('SELECT source_created_at FROM legacy_imports ORDER BY id DESC LIMIT 1').fetchone()
-    return render_template('dashboard.html', counts=counts, recent=recent, legacy_import=legacy_import)
+    return render_template('dashboard.html', counts=counts, recent=recent, legacy_import=legacy_import, pager=pager)
 
 
 @reports.get('/accounts')
@@ -55,18 +56,21 @@ def accounts():
     summary['payable'] += supplier_refunds
     summary['cash_balance'] += db.execute("SELECT COALESCE(SUM(amount_rial),0) FROM purchase_return_refunds WHERE method='cash'").fetchone()[0]
     summary['bank_balance'] += db.execute("SELECT COALESCE(SUM(amount_rial),0) FROM purchase_return_refunds WHERE method='bank'").fetchone()[0]
-    movements = db.execute('''SELECT m.*,p.name party_name,i.number invoice_number,u.display_name,
+    movements, movements_pager = paginate_query(db, '''SELECT m.*,p.name party_name,i.number invoice_number,u.display_name,
       a.name account_name
       FROM money_movements m LEFT JOIN parties p ON p.id=m.party_id
       LEFT JOIN invoices i ON i.id=m.invoice_id JOIN users u ON u.id=m.created_by
       LEFT JOIN financial_accounts a ON a.id=m.account_id
-      ORDER BY m.id DESC LIMIT 100''').fetchall()
-    financial_accounts = db.execute('''SELECT a.id,a.kind,a.name,a.is_active,
+      ORDER BY m.id DESC''', param='page_movements')
+    financial_accounts, accounts_pager = paginate_query(db, '''SELECT a.id,a.kind,a.name,a.is_active,
       COALESCE(SUM(CASE WHEN m.direction='in' THEN m.amount_rial ELSE -m.amount_rial END),0) balance_rial
       FROM financial_accounts a LEFT JOIN money_movements m ON m.account_id=a.id
-      GROUP BY a.id ORDER BY a.kind,a.id''').fetchall()
+      GROUP BY a.id ORDER BY a.kind,a.id''', param='page_accounts')
+    active_accounts = db.execute('SELECT id,name FROM financial_accounts WHERE is_active=1 ORDER BY kind,id').fetchall()
     return render_template('accounts.html', summary=summary, movements=movements,
-                           opening=opening_summary(db), financial_accounts=financial_accounts)
+                           opening=opening_summary(db), financial_accounts=financial_accounts,
+                           active_accounts=active_accounts, movements_pager=movements_pager,
+                           accounts_pager=accounts_pager)
 
 
 @reports.get('/profit-loss')

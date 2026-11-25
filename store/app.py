@@ -11,6 +11,7 @@ from .db import close_db, data_dir, get_db, migrate
 from .invoices import invoices
 from .legacy import legacy
 from .opening_balances import opening_balances
+from .pagination import page_url
 from .parties import parties
 from .purchase_returns import purchase_returns
 from .reports import reports
@@ -57,6 +58,7 @@ def create_app():
         branch = get_db().execute('SELECT name FROM branches WHERE id=1').fetchone()
         return {'money': lambda number: f'{int(number or 0):,}',
                 'csrf_token': lambda: g.csrf_token or '',
+                'page_url': page_url,
                 'cfg': settings_for_request(),
                 'branch_name': branch['name'] if branch else ''}
 

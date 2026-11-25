@@ -5,6 +5,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 
 from .auth import require_login, require_role
 from .db import get_db, transaction
+from .pagination import paginate_query
 from .opening_balances import remaining_rial
 from .utils import audit, required
 
@@ -15,7 +16,7 @@ parties = Blueprint('parties', __name__)
 @require_login
 def list_parties():
     db = get_db()
-    rows = db.execute('''SELECT p.*,
+    rows, pager = paginate_query(db, '''SELECT p.*,
       COALESCE((SELECT SUM(total_rial) FROM invoices WHERE party_id=p.id AND kind='sale'),0)
       - COALESCE((SELECT SUM(total_rial) FROM sales_returns WHERE party_id=p.id),0)
       - COALESCE((SELECT SUM(amount_rial) FROM money_movements WHERE party_id=p.id AND category='invoice' AND direction='in'),0)
@@ -26,13 +27,14 @@ def list_parties():
       - COALESCE((SELECT SUM(amount_rial) FROM money_movements WHERE party_id=p.id AND category='invoice' AND direction='out'),0)
       - COALESCE((SELECT SUM(amount_rial) FROM payment_checks WHERE party_id=p.id AND direction='issued' AND status='cleared' AND invoice_id IS NOT NULL),0)
       + COALESCE((SELECT SUM(r.amount_rial) FROM purchase_return_refunds r JOIN purchase_returns pr ON pr.id=r.return_id WHERE pr.party_id=p.id),0) payable
-      FROM parties p WHERE p.is_active=1 ORDER BY p.name LIMIT 300''').fetchall()
+      FROM parties p WHERE p.is_active=1 ORDER BY p.name''')
     opening = {row['party_id']: row['remaining'] for row in db.execute('''SELECT b.party_id,
         b.amount_rial-COALESCE(SUM(CASE WHEN s.direction='in' THEN s.amount_rial ELSE -s.amount_rial END),0) remaining
         FROM opening_party_balances b LEFT JOIN opening_settlements s ON s.party_id=b.party_id
-        GROUP BY b.party_id''')}
+        WHERE b.party_id IN (''' + ','.join('?' for _ in rows) + ''') GROUP BY b.party_id''',
+        [row['id'] for row in rows])} if rows else {}
     parties = [{**dict(row), 'opening_rial': opening.get(row['id'])} for row in rows]
-    return render_template('parties.html', parties=parties)
+    return render_template('parties.html', parties=parties, pager=pager)
 
 
 @parties.post('/parties')
@@ -63,7 +65,7 @@ def party_detail(party_id):
     party = db.execute('SELECT * FROM parties WHERE id=?', (party_id,)).fetchone()
     if not party:
         abort(404)
-    invoices = db.execute('''SELECT i.*,
+    invoices, invoices_pager = paginate_query(db, '''SELECT i.*,
       COALESCE((SELECT SUM(amount_rial) FROM money_movements m WHERE m.invoice_id=i.id AND m.category='invoice'),0)
       + COALESCE((SELECT SUM(amount_rial) FROM payment_checks c WHERE c.invoice_id=i.id AND c.status='cleared'),0) paid_rial,
       i.total_rial
@@ -75,9 +77,10 @@ def party_detail(party_id):
         JOIN sales_returns sr ON sr.id=r.return_id WHERE sr.sale_invoice_id=i.id),0)
         ELSE COALESCE((SELECT SUM(r.amount_rial) FROM purchase_return_refunds r
         JOIN purchase_returns pr ON pr.id=r.return_id WHERE pr.purchase_invoice_id=i.id),0) END balance_rial
-      FROM invoices i WHERE i.party_id=? ORDER BY i.id DESC LIMIT 100''', (party_id,)).fetchall()
-    movements = db.execute('SELECT * FROM money_movements WHERE party_id=? ORDER BY id DESC LIMIT 100',
-                           (party_id,)).fetchall()
+      FROM invoices i WHERE i.party_id=? ORDER BY i.id DESC''', (party_id,), param='page_invoices')
+    movements, movements_pager = paginate_query(db,
+        'SELECT * FROM money_movements WHERE party_id=? ORDER BY id DESC',
+        (party_id,), param='page_movements')
     balances = db.execute('''SELECT
       COALESCE((SELECT SUM(total_rial) FROM invoices WHERE party_id=? AND kind='sale'),0)
       - COALESCE((SELECT SUM(total_rial) FROM sales_returns WHERE party_id=?),0)
@@ -91,8 +94,10 @@ def party_detail(party_id):
       + COALESCE((SELECT SUM(r.amount_rial) FROM purchase_return_refunds r JOIN purchase_returns pr ON pr.id=r.return_id WHERE pr.party_id=?),0) payable''',
       (party_id, party_id, party_id, party_id, party_id, party_id, party_id, party_id, party_id, party_id)).fetchone()
     opening_rial = remaining_rial(db, party_id)
-    opening_settlements = db.execute('''SELECT * FROM opening_settlements
-        WHERE party_id=? ORDER BY id DESC LIMIT 100''', (party_id,)).fetchall()
+    opening_settlements, settlements_pager = paginate_query(db, '''SELECT * FROM opening_settlements
+        WHERE party_id=? ORDER BY id DESC''', (party_id,), param='page_settlements')
     return render_template('party_detail.html', party=party, invoices=invoices, movements=movements,
                            receivable=balances['receivable'], payable=balances['payable'],
-                           opening_rial=opening_rial, opening_settlements=opening_settlements)
+                           opening_rial=opening_rial, opening_settlements=opening_settlements,
+                           invoices_pager=invoices_pager, movements_pager=movements_pager,
+                           settlements_pager=settlements_pager)

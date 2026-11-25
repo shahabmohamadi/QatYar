@@ -2,6 +2,7 @@
 param(
   [string]$BackupDir = '',
   [string]$AdminPasswordFile = '',
+  [string]$GitHubTokenFile = '',
   [int]$Port = 8080
 )
 $ErrorActionPreference = 'Stop'
@@ -14,6 +15,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 if ($Port -lt 1024 -or $Port -gt 65535) { throw 'پورت باید بین 1024 و 65535 باشد.' }
 if ($BackupDir -and -not [IO.Path]::IsPathRooted($BackupDir)) { throw 'مسیر بکاپ باید کامل باشد.' }
 if ($AdminPasswordFile -and -not [IO.Path]::IsPathRooted($AdminPasswordFile)) { throw 'مسیر فایل رمز مدیر باید کامل باشد.' }
+if ($GitHubTokenFile -and -not [IO.Path]::IsPathRooted($GitHubTokenFile)) { throw 'مسیر فایل توکن GitHub باید کامل باشد.' }
 $source = Split-Path -Parent $PSScriptRoot
 $installDir = Join-Path $env:ProgramFiles 'MobilePartsShop'
 $dataDir = Join-Path $env:ProgramData 'MobilePartsShop'
@@ -49,6 +51,13 @@ if (-not $python) {
 New-Item -ItemType Directory -Force -Path $installDir, $dataDir, $effectiveBackupDir, (Join-Path $installDir 'store'), (Join-Path $installDir 'windows') | Out-Null
 & icacls $dataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'تنظیم دسترسی پوشه داده ناموفق بود.' }
+if ($GitHubTokenFile) {
+  if (-not (Test-Path $GitHubTokenFile -PathType Leaf)) { throw 'فایل توکن GitHub پیدا نشد.' }
+  $tokenTarget = Join-Path $dataDir 'github-token.txt'
+  Copy-Item $GitHubTokenFile $tokenTarget -Force
+  & icacls $tokenTarget /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'تنظیم دسترسی فایل توکن GitHub ناموفق بود.' }
+}
 Copy-Item (Join-Path $source 'run.py') $installDir -Force
 Copy-Item (Join-Path $source 'VERSION') $installDir -Force
 Copy-Item (Join-Path $source 'requirements.txt') $installDir -Force

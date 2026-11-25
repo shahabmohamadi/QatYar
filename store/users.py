@@ -6,6 +6,7 @@ from werkzeug.security import check_password_hash
 
 from .auth import password_hash, require_login, require_role
 from .db import get_db, transaction
+from .pagination import paginate_query
 from .utils import audit, required
 
 users = Blueprint('users', __name__)
@@ -14,8 +15,8 @@ users = Blueprint('users', __name__)
 @users.get('/users')
 @require_role('owner')
 def list_users():
-    rows = get_db().execute('SELECT id,username,display_name,role,is_active,created_at FROM users ORDER BY id').fetchall()
-    return render_template('users.html', users=rows)
+    rows, pager = paginate_query(get_db(), 'SELECT id,username,display_name,role,is_active,created_at FROM users ORDER BY id')
+    return render_template('users.html', users=rows, pager=pager)
 
 
 @users.post('/users')

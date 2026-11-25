@@ -5,6 +5,7 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 
 from .auth import require_role
 from .db import get_db, transaction
+from .pagination import paginate_query
 from .utils import audit, integer, required
 
 checks = Blueprint('checks', __name__)
@@ -34,17 +35,18 @@ def list_checks():
     status = request.args.get('status', '')
     if status not in ('', *_TRANSITIONS):
         status = ''
-    rows = db.execute('''SELECT c.*,p.name party_name,i.number invoice_number FROM payment_checks c
+    rows, pager = paginate_query(db, '''SELECT c.*,p.name party_name,i.number invoice_number FROM payment_checks c
       LEFT JOIN parties p ON p.id=c.party_id LEFT JOIN invoices i ON i.id=c.invoice_id
-      WHERE (?='' OR c.status=?) ORDER BY c.due_date_jalali,c.id DESC LIMIT 200''', (status, status)).fetchall()
-    historical = db.execute('''SELECT source_db,check_number,bank_name,amount_rial,
+      WHERE (?='' OR c.status=?) ORDER BY c.due_date_jalali,c.id DESC''', (status, status))
+    historical, historical_pager = paginate_query(db, '''SELECT source_db,check_number,bank_name,amount_rial,
       due_date_jalali,kind_code,status_code,is_active,is_cancelled,note
-      FROM legacy_checks ORDER BY source_db DESC,due_date_jalali DESC,id DESC''').fetchall()
-    parties = db.execute('SELECT id,name FROM parties WHERE is_active=1 ORDER BY name LIMIT 500').fetchall()
+      FROM legacy_checks ORDER BY source_db DESC,due_date_jalali DESC,id DESC''', param='page_historical')
+    parties = db.execute('SELECT id,name FROM parties WHERE is_active=1 ORDER BY name').fetchall()
     invoices = db.execute('''SELECT i.id,i.number,p.name party_name,i.kind FROM invoices i
-      JOIN parties p ON p.id=i.party_id ORDER BY i.id DESC LIMIT 300''').fetchall()
+      JOIN parties p ON p.id=i.party_id ORDER BY i.id DESC''').fetchall()
     return render_template('checks.html', rows=rows, parties=parties, invoices=invoices,
-                           status=status, historical=historical)
+                           status=status, historical=historical, pager=pager,
+                           historical_pager=historical_pager)
 
 
 @checks.post('/checks')

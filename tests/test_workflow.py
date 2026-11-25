@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import json
+import re
 
 from store.app import create_app
 from store.auth import password_hash
@@ -14,7 +15,7 @@ from store.backup import create_backup, restore_backup, scheduled_backup
 from store.db import connect, db_path, transaction
 from store.legacy_import import activate_existing_parsian_catalog
 from store.opening_balances import activate_existing as activate_opening_balances, remaining_rial, summary as opening_summary
-from store.updates import release, version_key
+from store.updates import release, version, version_key
 
 
 class StoreWorkflowTest(unittest.TestCase):
@@ -146,6 +147,85 @@ class StoreWorkflowTest(unittest.TestCase):
         self.assertEqual(result['digest'], 'sha256:' + 'a' * 64)
         with self.assertRaises(ValueError):
             release('acme/qatyar/other')
+
+    def test_numbered_pages_and_return_forms(self):
+        db = connect()
+        with transaction(db):
+            db.execute("INSERT INTO parties(id,name,kind) VALUES (1,'مشتری و تأمین‌کننده','both')")
+            for number in range(1, 24):
+                db.execute('''INSERT INTO products(id,sku,name,search_sku,search_name)
+                    VALUES (?,?,?,?,?)''', (number, f'PART-{number:02}', f'قطعه {number:02}',
+                                          f'PART-{number:02}', f'قطعه {number:02}'))
+                db.execute('INSERT INTO stock_balances(branch_id,product_id) VALUES (1,?)', (number,))
+                db.execute('''INSERT INTO product_prices(product_id,price_type_id,amount_rial,updated_by)
+                    VALUES (?,1,200,1)''', (number,))
+        db.close()
+        def body_rows(path):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            first_body = re.search(rb'<tbody>(.*?)</tbody>', response.data, re.S).group(1)
+            return first_body.count(b'<tr>'), response.data
+        count, page1 = body_rows('/products')
+        self.assertEqual(count, 10)
+        self.assertIn(b'page=2', page1)
+        count, page2 = body_rows('/products?page=2')
+        self.assertEqual(count, 10)
+        count, page3 = body_rows('/products?page=3')
+        self.assertEqual(count, 3)
+        self.assertIn(b'page=3', page3)
+        self.assertEqual(body_rows('/products?page=999')[0], 3)
+        self.assertEqual(body_rows('/products?page=invalid')[0], 10)
+        searched_count, searched = body_rows('/products?q=PART&page=2')
+        self.assertEqual(searched_count, 10)
+        self.assertIn(b'q=PART', searched)
+        self.assertEqual(len(self.client.get('/api/v1/prices').json['items']), 10)
+        self.assertEqual(self.client.get('/api/v1/prices?page=3').json['page'], 3)
+
+        ids = [str(i) for i in range(1, 13)]
+        self.post('/invoices/new/purchase', {'party_id': '1', 'product_id': ids,
+            'quantity': ['2'] * 12, 'unit_cost_rial': ['100'] * 12})
+        self.post('/invoices/new/sale', {'party_id': '1', 'product_id': ids,
+            'quantity': ['1'] * 12, 'price_type_id': ['1'] * 12})
+        self.assertEqual(body_rows('/invoices')[0], 2)
+        self.assertIn(b'F-000002', self.client.get('/returns/new').data)
+        self.assertIn(b'K-000001', self.client.get('/purchase-returns/new').data)
+        self.assertEqual(body_rows('/returns/new/2?page=2')[0], 2)
+        returned = self.post('/returns/new/2?page=2', {'line_id': ['23', '24'],
+            'quantity': ['1', '0'], 'reason': 'تست صفحه دوم'})
+        self.assertIn(b'RET0000001', returned.data)
+        self.assertEqual(body_rows('/purchase-returns/new/1?page=2')[0], 2)
+        purchased = self.post('/purchase-returns/new/1?page=2', {'line_id': ['11', '12'],
+            'quantity': ['1', '0'], 'reason': 'تست صفحه دوم'})
+        self.assertIn(b'PRT0000001', purchased.data)
+        db = connect()
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM sales_return_lines').fetchone()[0], 1)
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM purchase_return_lines').fetchone()[0], 1)
+        db.close()
+
+    def test_all_list_pages_render(self):
+        routes = ('/', '/products', '/invoices', '/returns', '/purchase-returns',
+                  '/parties', '/checks', '/accounts', '/users', '/legacy',
+                  '/legacy/invoices', '/legacy/stock', '/legacy/checks',
+                  '/legacy/accounts', '/settings?tab=sales', '/settings?tab=payments',
+                  '/settings?tab=backup', '/settings?tab=security', '/settings?tab=updates')
+        for route in routes:
+            with self.subTest(route=route):
+                self.assertEqual(self.client.get(route).status_code, 200)
+
+    def test_update_settings_show_current_or_new_version(self):
+        db = connect()
+        self.assertEqual(db.execute('SELECT github_repo FROM update_settings WHERE id=1').fetchone()[0],
+                         'shahabmohamadi/QatYar')
+        db.close()
+        result = {'tag': 'v' + version(), 'notes': 'اصلاحات',
+                  'url': 'https://api.github.com/repos/shahabmohamadi/QatYar/releases/assets/1',
+                  'digest': 'sha256:' + 'a' * 64}
+        with patch('store.updates.release', return_value=result):
+            current = self.post('/settings/updates/check', {})
+        self.assertIn('نسخه فعلی به‌روز است.'.encode(), current.data)
+        with patch('store.updates.release', return_value={**result, 'tag': 'v9.0.0'}):
+            newer = self.post('/settings/updates/check', {})
+        self.assertIn('اعمال این نسخه'.encode(), newer.data)
 
     def test_csrf_and_permissions(self):
         self.assertEqual(self.client.post('/products', data={'sku': 'X', 'name': 'bad'}).status_code, 400)

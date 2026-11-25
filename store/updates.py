@@ -16,6 +16,7 @@ updates = Blueprint('updates', __name__)
 REPO = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z')
 DIGEST = re.compile(r'sha256:[0-9a-f]{64}\Z')
 ASSET = 'QatYar-Windows.zip'
+UPDATE_REPO = 'shahabmohamadi/QatYar'
 
 
 def github_token():
@@ -68,8 +69,8 @@ def release(repo):
 @require_role('owner')
 def set_repo():
     repo = request.form.get('github_repo', '').strip()
-    if repo and not REPO.fullmatch(repo):
-        flash('مخزن باید به شکل owner/repo باشد.', 'error')
+    if repo != UPDATE_REPO:
+        flash('به‌روزرسانی فقط از مخزن رسمی این برنامه انجام می‌شود.', 'error')
     else:
         with transaction(get_db()) as db:
             db.execute('''UPDATE update_settings SET github_repo=?,release_tag='',release_notes='',

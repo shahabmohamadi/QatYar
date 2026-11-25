@@ -5,6 +5,7 @@ from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template
 
 from .auth import require_login, require_role
 from .db import get_db, transaction
+from .pagination import paginate_query, page_url
 from .search import normalize_code, normalize_name
 from .settings import current_settings
 from .utils import audit, integer, required
@@ -12,17 +13,17 @@ from .utils import audit, integer, required
 catalog = Blueprint('catalog', __name__)
 
 
-def product_rows(db, term='', limit=1000):
+def product_rows(db, term=''):
     name_term = normalize_name(term)
     code_term = normalize_code(term)
     name_pattern = '%' + name_term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
     code_pattern = '%' + code_term + '%' if code_term else '<no-code-match>'
     prefix_pattern = code_term + '%' if code_term else '<no-code-match>'
-    return db.execute('''SELECT p.*,COALESCE(sb.quantity,0) stock,COALESCE(sb.avg_cost_rial,0) avg_cost
+    return paginate_query(db, '''SELECT p.*,COALESCE(sb.quantity,0) stock,COALESCE(sb.avg_cost_rial,0) avg_cost
         FROM products p LEFT JOIN stock_balances sb ON sb.product_id=p.id AND sb.branch_id=1
         WHERE p.is_active=1 AND (?='' OR p.search_name LIKE ? ESCAPE '\\' OR p.search_sku LIKE ?)
-        ORDER BY CASE WHEN p.search_sku=? THEN 0 WHEN p.search_sku LIKE ? THEN 1 ELSE 2 END,p.name LIMIT ?''',
-        (name_term, name_pattern, code_pattern, code_term, prefix_pattern, limit)).fetchall()
+        ORDER BY CASE WHEN p.search_sku=? THEN 0 WHEN p.search_sku LIKE ? THEN 1 ELSE 2 END,p.name''',
+        (name_term, name_pattern, code_pattern, code_term, prefix_pattern))
 
 
 @catalog.get('/products')
@@ -30,7 +31,7 @@ def product_rows(db, term='', limit=1000):
 def list_products():
     db = get_db()
     term = request.args.get('q', '').strip()[:80]
-    products = product_rows(db, term)
+    products, pager = product_rows(db, term)
     stock_summary = db.execute('''SELECT COUNT(*) products,
         COALESCE(SUM(sb.quantity),0) units,
         COALESCE(SUM(CASE WHEN sb.quantity>0 THEN 1 ELSE 0 END),0) positive,
@@ -38,10 +39,11 @@ def list_products():
         FROM products p JOIN stock_balances sb ON sb.product_id=p.id AND sb.branch_id=1
         WHERE p.is_active=1''').fetchone()
     tiers = db.execute('SELECT * FROM price_types WHERE is_active=1 ORDER BY id').fetchall()
-    prices = db.execute('SELECT product_id,price_type_id,amount_rial FROM product_prices WHERE is_active=1').fetchall()
+    product_ids = [row['id'] for row in products]
+    prices = db.execute('SELECT product_id,price_type_id,amount_rial FROM product_prices WHERE is_active=1 AND product_id IN (' + ','.join('?' for _ in product_ids) + ')', product_ids).fetchall() if product_ids else []
     by_product = {(row['product_id'], row['price_type_id']): row['amount_rial'] for row in prices}
     return render_template('products.html', products=products, tiers=tiers, prices=by_product,
-                           stock_summary=stock_summary, term=term)
+                           stock_summary=stock_summary, term=term, pager=pager)
 
 
 @catalog.post('/products')
@@ -77,19 +79,24 @@ def product_detail(product_id):
         WHERE p.id=?''', (product_id,)).fetchone()
     if not product:
         abort(404)
-    tiers = db.execute('''SELECT t.*,pp.amount_rial,COALESCE(pp.is_active,0) price_active
+    tier_query = '''SELECT t.*,pp.amount_rial,COALESCE(pp.is_active,0) price_active
         FROM price_types t LEFT JOIN product_prices pp ON pp.price_type_id=t.id AND pp.product_id=?
-        WHERE t.is_active=1 ORDER BY t.id''', (product_id,)).fetchall()
-    history = db.execute('''SELECT pc.*,t.label,u.display_name FROM price_changes pc
+        WHERE t.is_active=1 ORDER BY t.id'''
+    tiers = db.execute(tier_query, (product_id,)).fetchall()
+    tiers_page, tiers_pager = paginate_query(db, tier_query, (product_id,), param='page_tiers')
+    history, history_pager = paginate_query(db, '''SELECT pc.*,t.label,u.display_name FROM price_changes pc
         JOIN price_types t ON t.id=pc.price_type_id JOIN users u ON u.id=pc.changed_by
-        WHERE pc.product_id=? ORDER BY pc.id DESC LIMIT 30''', (product_id,)).fetchall()
-    movements = db.execute('''SELECT sm.*,u.display_name FROM stock_movements sm
-        JOIN users u ON u.id=sm.created_by WHERE sm.product_id=? ORDER BY sm.id DESC LIMIT 20''', (product_id,)).fetchall()
+        WHERE pc.product_id=? ORDER BY pc.id DESC''', (product_id,), param='page_history')
+    movements, movements_pager = paginate_query(db, '''SELECT sm.*,u.display_name FROM stock_movements sm
+        JOIN users u ON u.id=sm.created_by WHERE sm.product_id=? ORDER BY sm.id DESC''',
+        (product_id,), param='page_stock')
     suggestion = db.execute('''SELECT * FROM legacy_price_suggestions
         WHERE source_db='db_1405' AND product_code=? ORDER BY import_id DESC LIMIT 1''',
         (product['sku'],)).fetchone()
     return render_template('product_detail.html', product=product, tiers=tiers, history=history,
-                           movements=movements, suggestion=suggestion)
+                           movements=movements, suggestion=suggestion, tiers_page=tiers_page,
+                           tiers_pager=tiers_pager, history_pager=history_pager,
+                           movements_pager=movements_pager)
 
 
 @catalog.post('/products/<int:product_id>/edit')
@@ -220,10 +227,12 @@ def confirm_cost(product_id):
 @catalog.get('/api/v1/prices')
 @require_login
 def price_api():
-    rows = get_db().execute('''SELECT p.id,p.sku,p.name,p.brand,t.code price_code,t.label price_label,
+    rows, pager = paginate_query(get_db(), '''SELECT p.id,p.sku,p.name,p.brand,t.code price_code,t.label price_label,
         pp.amount_rial,COALESCE(sb.quantity,0) stock
         FROM products p JOIN product_prices pp ON pp.product_id=p.id AND pp.is_active=1
         JOIN price_types t ON t.id=pp.price_type_id AND t.is_active=1
         LEFT JOIN stock_balances sb ON sb.product_id=p.id AND sb.branch_id=1
-        WHERE p.is_active=1 ORDER BY p.name,t.id LIMIT 1000''').fetchall()
-    return jsonify({'items': [dict(row) for row in rows]})
+        WHERE p.is_active=1 ORDER BY p.name,t.id''')
+    return jsonify({'items': [dict(row) for row in rows], 'page': pager.page,
+                    'pages': pager.pages, 'total': pager.total,
+                    'next_page': page_url(pager, pager.page + 1) if pager.page < pager.pages else None})

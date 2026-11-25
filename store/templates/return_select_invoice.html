@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}ثبت برگشت {{ 'فروش' if kind=='sale' else 'خرید' }} | {{ cfg['app_name'] }}{% endblock %}
+{% block heading %}ثبت برگشت {{ 'فروش' if kind=='sale' else 'خرید' }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><a class="text-link" href="{{ url_for('returns.list_returns' if kind=='sale' else 'purchase_returns.list_returns') }}">← بازگشت به برگشت‌ها</a><h1>انتخاب فاکتور {{ 'فروش' if kind=='sale' else 'خرید' }}</h1><p>فاکتوری را انتخاب کنید که هنوز کالای قابل برگشت دارد؛ سپس تعداد و دلیل برگشت را در فرم ثبت کنید.</p></div></div>
+<form method="get" class="panel form-grid"><label>شماره فاکتور یا طرف حساب<input name="q" value="{{ q }}" placeholder="جستجو"></label><button class="button ghost">جستجو</button></form>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>شماره فاکتور</th><th>طرف حساب</th><th>زمان</th><th>عملیات</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row['number'] }}</td><td>{{ row['party_name'] }}</td><td>{{ row['created_at'] }}</td><td><a class="button primary" href="{{ url_for('returns.new_return', sale_id=row['id']) if kind=='sale' else url_for('purchase_returns.new_return',purchase_id=row['id']) }}">ثبت برگشت</a></td></tr>{% else %}<tr><td colspan="4" class="empty">فاکتور قابل برگشتی پیدا نشد.</td></tr>{% endfor %}</tbody></table></div>{% include 'pagination.html' %}</section>
+{% endblock %}

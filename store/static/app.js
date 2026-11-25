@@ -14,6 +14,20 @@
   document.querySelectorAll('form').forEach(form => form.addEventListener('submit', () => {
     form.querySelectorAll('input[name$="_rial"]').forEach(input => { input.value = plainDigits(input.value); });
   }));
+  const updateForm = document.querySelector('[data-update-check-form]');
+  if (updateForm) {
+    const key = `qatyar-update-checked-${updateForm.action}`;
+    const now = Date.now();
+    updateForm.addEventListener('submit', () => sessionStorage.setItem(key, String(Date.now())));
+    if (now - Number(sessionStorage.getItem(key) || 0) > 15 * 60 * 1000) {
+      sessionStorage.setItem(key, String(now));
+      const status = document.querySelector('[data-update-check-status]');
+      if (status) status.textContent = 'در حال بررسی نسخهٔ مخزن…';
+      fetch(updateForm.action, {method: 'POST', body: new FormData(updateForm), credentials: 'same-origin'})
+        .then(response => { if (!response.ok) throw new Error('بررسی نسخه انجام نشد.'); location.reload(); })
+        .catch(() => { if (status) status.textContent = 'بررسی خودکار انجام نشد. از دکمهٔ بررسی نسخه جدید استفاده کنید.'; });
+    }
+  }
   const lines = document.getElementById('invoice-lines');
   if (!lines) return;
   const kind = lines.dataset.kind;

@@ -10,6 +10,7 @@ from flask import Blueprint, abort, flash, g, redirect, render_template, request
 
 from .auth import require_role
 from .db import data_dir, db_path, get_db, transaction
+from .pagination import paginate_query
 from .utils import audit, integer, required
 
 settings_bp = Blueprint('settings', __name__)
@@ -41,17 +42,22 @@ def page():
     if tab not in ('identity', 'inventory', 'sales', 'payments', 'backup', 'security', 'system', 'updates'):
         tab = 'identity'
     tiers = db.execute('SELECT * FROM price_types ORDER BY id').fetchall()
-    accounts = db.execute('SELECT * FROM financial_accounts ORDER BY kind,id').fetchall()
+    tiers_page, tiers_pager = paginate_query(db, 'SELECT * FROM price_types ORDER BY id', param='page_tiers')
+    accounts, accounts_pager = paginate_query(db, 'SELECT * FROM financial_accounts ORDER BY kind,id', param='page_accounts')
     branch = db.execute('SELECT id,name FROM branches WHERE id=1').fetchone()
-    runs = db.execute('SELECT * FROM backup_runs ORDER BY id DESC LIMIT 5').fetchall()
-    users = db.execute('SELECT id,username,display_name,role,is_active FROM users ORDER BY id').fetchall()
+    runs, runs_pager = paginate_query(db, 'SELECT * FROM backup_runs ORDER BY id DESC', param='page_backups')
+    users, users_pager = paginate_query(db, 'SELECT id,username,display_name,role,is_active FROM users ORDER BY id', param='page_users')
     version = db.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
     update_info = db.execute('SELECT * FROM update_settings WHERE id=1').fetchone()
-    from .updates import version as app_version, version_key
+    from .updates import github_token, version as app_version, version_key
     update_status = data_dir() / 'update-status.txt'
     return render_template('settings.html', cfg=settings_for_request(), tiers=tiers,
-                           accounts=accounts, active_tab=tab, update_info=update_info,
+                           tiers_page=tiers_page, tiers_pager=tiers_pager,
+                           accounts=accounts, accounts_pager=accounts_pager,
+                           runs_pager=runs_pager, users_pager=users_pager,
+                           active_tab=tab, update_info=update_info,
                            app_version=app_version(), version_key=version_key,
+                           token_configured=bool(github_token()),
                            update_status=update_status.read_text(encoding='utf-8') if update_status.exists() else '',
                            branch=branch, runs=runs, users=users,
                            backup_default=str(data_dir() / 'backups'),

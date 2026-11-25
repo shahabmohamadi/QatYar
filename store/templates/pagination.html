@@ -1,0 +1,13 @@
+{% if pager and pager.pages > 1 %}
+<nav class="pagination" aria-label="صفحه‌های فهرست">
+  <span class="pagination-summary">{{ pager.total }} مورد · صفحه {{ pager.page }} از {{ pager.pages }}</span>
+  {% if pager.page > 1 %}<a href="{{ page_url(pager, pager.page-1) }}" aria-label="صفحه قبل">قبلی</a>{% endif %}
+  {% set previous = namespace(value=0) %}
+  {% for number in pager.numbers %}
+    {% if previous.value and number > previous.value + 1 %}<span class="pagination-gap">…</span>{% endif %}
+    <a href="{{ page_url(pager, number) }}" class="{{ 'active' if number == pager.page else '' }}" {% if number == pager.page %}aria-current="page"{% endif %}>{{ number }}</a>
+    {% set previous.value = number %}
+  {% endfor %}
+  {% if pager.page < pager.pages %}<a href="{{ page_url(pager, pager.page+1) }}" aria-label="صفحه بعد">بعدی</a>{% endif %}
+</nav>
+{% endif %}

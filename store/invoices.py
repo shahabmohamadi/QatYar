@@ -6,6 +6,7 @@ from flask import Blueprint, abort, flash, g, redirect, render_template, request
 
 from .auth import require_login
 from .db import get_db, transaction
+from .pagination import paginate_query
 from .settings import current_settings
 from .utils import audit, integer
 
@@ -16,7 +17,7 @@ def invoice_form_data(db, kind):
     party_kinds = ('customer', 'both') if kind == 'sale' else ('supplier', 'both')
     parties = db.execute('SELECT id,name,kind FROM parties WHERE is_active=1 AND kind IN (?,?) ORDER BY name',
                          party_kinds).fetchall()
-    products = db.execute('SELECT id,sku,name FROM products WHERE is_active=1 ORDER BY name LIMIT 1000').fetchall()
+    products = db.execute('SELECT id,sku,name FROM products WHERE is_active=1 ORDER BY name').fetchall()
     tiers = db.execute('SELECT id,label FROM price_types WHERE is_active=1 ORDER BY id').fetchall()
     prices = db.execute('SELECT product_id,price_type_id,amount_rial FROM product_prices WHERE is_active=1').fetchall()
     accounts = db.execute('SELECT id,kind,name FROM financial_accounts WHERE is_active=1 ORDER BY kind,id').fetchall()
@@ -153,7 +154,7 @@ def list_invoices():
     kind = request.args.get('kind', '')
     if kind not in ('', 'sale', 'purchase'):
         kind = ''
-    rows = db.execute('''SELECT i.*,p.name party_name,
+    rows, pager = paginate_query(db, '''SELECT i.*,p.name party_name,
         i.total_rial
         - CASE WHEN i.kind='sale' THEN COALESCE((SELECT SUM(total_rial) FROM sales_returns r WHERE r.sale_invoice_id=i.id),0)
           ELSE COALESCE((SELECT SUM(total_rial) FROM purchase_returns r WHERE r.purchase_invoice_id=i.id),0) END
@@ -164,14 +165,14 @@ def list_invoices():
           ELSE COALESCE((SELECT SUM(rf.amount_rial) FROM purchase_return_refunds rf
           JOIN purchase_returns pr ON pr.id=rf.return_id WHERE pr.purchase_invoice_id=i.id),0) END balance_rial
         FROM invoices i JOIN parties p ON p.id=i.party_id
-        WHERE (?='' OR i.kind=?) ORDER BY i.id DESC LIMIT 200''', (kind, kind)).fetchall()
-    historical = db.execute('''SELECT id,title_code,factor_num,party_name,total_rial,date_jalali
+        WHERE (?='' OR i.kind=?) ORDER BY i.id DESC''', (kind, kind))
+    historical, historical_pager = paginate_query(db, '''SELECT id,title_code,factor_num,party_name,total_rial,date_jalali
         FROM legacy_invoices WHERE source_db='db_1405' AND title_code IN (1,2,3,4)
-        ORDER BY date_jalali DESC,id DESC LIMIT 20''').fetchall()
-    historical_count = db.execute('''SELECT COUNT(*) FROM legacy_invoices
-        WHERE source_db='db_1405' AND title_code IN (1,2,3,4)''').fetchone()[0]
+        ORDER BY date_jalali DESC,id DESC''', param='page_historical')
+    historical_count = historical_pager.total
     return render_template('invoices.html', invoices=rows, kind=kind,
-                           historical=historical, historical_count=historical_count)
+                           historical=historical, historical_count=historical_count,
+                           pager=pager, historical_pager=historical_pager)
 
 
 @invoices.route('/invoices/new/<kind>', methods=['GET', 'POST'])
@@ -204,15 +205,17 @@ def invoice_detail(invoice_id):
         JOIN parties p ON p.id=i.party_id WHERE i.id=?''', (invoice_id,)).fetchone()
     if not invoice:
         abort(404)
-    lines = db.execute('''SELECT il.*,p.sku,p.name,t.label price_label FROM invoice_lines il
+    lines, lines_pager = paginate_query(db, '''SELECT il.*,p.sku,p.name,t.label price_label FROM invoice_lines il
         JOIN products p ON p.id=il.product_id
-        LEFT JOIN price_types t ON t.id=il.price_type_id WHERE il.invoice_id=?''', (invoice_id,)).fetchall()
-    payments = db.execute('''SELECT m.*,a.name account_name FROM money_movements m
+        LEFT JOIN price_types t ON t.id=il.price_type_id WHERE il.invoice_id=? ORDER BY il.id''',
+        (invoice_id,), param='page_lines')
+    payments, payments_pager = paginate_query(db, '''SELECT m.*,a.name account_name FROM money_movements m
         LEFT JOIN financial_accounts a ON a.id=m.account_id WHERE invoice_id=? ORDER BY m.id DESC''',
-                          (invoice_id,)).fetchall()
+        (invoice_id,), param='page_payments')
     accounts = db.execute('SELECT id,kind,name FROM financial_accounts WHERE is_active=1 ORDER BY kind,id').fetchall()
-    cleared_checks = db.execute("SELECT * FROM payment_checks WHERE invoice_id=? AND status='cleared' ORDER BY id DESC",
-                                (invoice_id,)).fetchall()
+    cleared_checks, checks_pager = paginate_query(db,
+        "SELECT * FROM payment_checks WHERE invoice_id=? AND status='cleared' ORDER BY id DESC",
+        (invoice_id,), param='page_checks')
     if invoice['kind'] == 'sale':
         returned = db.execute('SELECT COALESCE(SUM(total_rial),0) FROM sales_returns WHERE sale_invoice_id=?',
                               (invoice_id,)).fetchone()[0]
@@ -223,16 +226,23 @@ def invoice_detail(invoice_id):
                               (invoice_id,)).fetchone()[0]
         refunds = db.execute('''SELECT COALESCE(SUM(r.amount_rial),0) FROM purchase_return_refunds r
             JOIN purchase_returns pr ON pr.id=r.return_id WHERE pr.purchase_invoice_id=?''', (invoice_id,)).fetchone()[0]
-    sale_returns = db.execute('SELECT id,number,total_rial FROM sales_returns WHERE sale_invoice_id=? ORDER BY id DESC',
-                              (invoice_id,)).fetchall() if invoice['kind'] == 'sale' else []
-    purchase_returns = db.execute('SELECT id,number,total_rial FROM purchase_returns WHERE purchase_invoice_id=? ORDER BY id DESC',
-                                  (invoice_id,)).fetchall() if invoice['kind'] == 'purchase' else []
-    paid = sum(row['amount_rial'] for row in payments) + sum(row['amount_rial'] for row in cleared_checks)
+    return_table, return_link = (('sales_returns', 'sale_invoice_id') if invoice['kind'] == 'sale'
+                                 else ('purchase_returns', 'purchase_invoice_id'))
+    related_returns, returns_pager = paginate_query(db,
+        f'SELECT id,number,total_rial FROM {return_table} WHERE {return_link}=? ORDER BY id DESC',
+        (invoice_id,), param='page_returns')
+    sale_returns = related_returns if invoice['kind'] == 'sale' else []
+    purchase_returns = related_returns if invoice['kind'] == 'purchase' else []
+    paid = db.execute('SELECT COALESCE(SUM(amount_rial),0) FROM money_movements WHERE invoice_id=?',
+                      (invoice_id,)).fetchone()[0]
+    paid += db.execute("SELECT COALESCE(SUM(amount_rial),0) FROM payment_checks WHERE invoice_id=? AND status='cleared'",
+                       (invoice_id,)).fetchone()[0]
     return render_template('invoice_detail.html', invoice=invoice, lines=lines, payments=payments,
                            cleared_checks=cleared_checks, sale_returns=sale_returns,
                            purchase_returns=purchase_returns, returned=returned,
                            outstanding=invoice['total_rial'] - returned - paid + refunds,
-                           accounts=accounts)
+                           accounts=accounts, lines_pager=lines_pager, payments_pager=payments_pager,
+                           checks_pager=checks_pager, returns_pager=returns_pager)
 
 
 @invoices.post('/invoices/<int:invoice_id>/payments')
