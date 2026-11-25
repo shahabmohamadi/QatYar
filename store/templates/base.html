@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#102f3a">
+  <link rel="icon" href="{{ url_for('settings.logo', v=cfg['logo_revision']) }}">
+  <title>{% block title %}{{ cfg['app_name'] }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+{% if g.user %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><img class="brand-icon" src="{{ url_for('settings.logo', v=cfg['logo_revision']) }}" alt=""><div><strong>{{ cfg['app_name'] }}</strong><small>{{ cfg['app_tagline'] }}</small></div></div>
+    <nav class="nav" aria-label="منوی اصلی">
+      <a href="{{ url_for('web.dashboard') }}" class="{{ 'active' if request.endpoint == 'web.dashboard' else '' }}">⌂ <span>پیشخوان</span></a>
+      <a href="{{ url_for('catalog.list_products') }}" class="{{ 'active' if request.blueprint == 'catalog' else '' }}">▦ <span>کالا و قیمت‌ها</span></a>
+      <a href="{{ url_for('invoices.list_invoices') }}" class="{{ 'active' if request.blueprint == 'invoices' else '' }}">▤ <span>خرید و فروش</span></a>
+      <a href="{{ url_for('returns.list_returns') }}" class="{{ 'active' if request.blueprint == 'returns' else '' }}">↶ <span>برگشت فروش</span></a>
+      <a href="{{ url_for('purchase_returns.list_returns') }}" class="{{ 'active' if request.blueprint == 'purchase_returns' else '' }}">↷ <span>برگشت خرید</span></a>
+      <a href="{{ url_for('parties.list_parties') }}" class="{{ 'active' if request.blueprint == 'parties' else '' }}">♧ <span>طرف حساب‌ها</span></a>
+      {% if g.user['role'] in ('owner','manager') %}<a href="{{ url_for('legacy.overview') }}" class="{{ 'active' if request.blueprint == 'legacy' else '' }}">▧ <span>تاریخچه پارسیان</span></a>{% endif %}
+      {% if g.user['role'] in ('owner','manager') %}<a href="{{ url_for('web.accounts') }}" class="{{ 'active' if request.endpoint == 'web.accounts' else '' }}">◉ <span>حساب‌ها و صندوق</span></a>{% endif %}
+      {% if g.user['role'] in ('owner','manager') %}<a href="{{ url_for('web.profit_loss') }}" class="{{ 'active' if request.endpoint == 'web.profit_loss' else '' }}">◫ <span>سود و زیان</span></a>{% endif %}
+      {% if g.user['role'] in ('owner','manager') %}<a href="{{ url_for('checks.list_checks') }}" class="{{ 'active' if request.blueprint == 'checks' else '' }}">▣ <span>چک‌ها</span></a>{% endif %}
+      {% if g.user['role'] == 'owner' %}<a href="{{ url_for('users.list_users') }}" class="{{ 'active' if request.endpoint == 'users.list_users' else '' }}">⚙ <span>کاربران</span></a>{% endif %}
+      {% if g.user['role'] == 'owner' %}<a href="{{ url_for('settings.page') }}" class="{{ 'active' if request.blueprint == 'settings' else '' }}">⚙ <span>تنظیمات</span></a>{% endif %}
+    </nav>
+    <div class="sidebar-foot"><span class="status-dot"></span> داده‌ها روی رایانهٔ فروشگاه</div>
+  </aside>
+  <div class="main-wrap">
+    <header class="topbar"><div><span class="top-kicker">{{ cfg['shop_name'] }} · {{ branch_name }}</span><strong>{% block heading %}پیشخوان{% endblock %}</strong></div><div class="top-actions"><a href="{{ url_for('users.profile') }}">{{ g.user['display_name'] }}</a><form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-button" type="submit">خروج</button></form></div></header>
+    <main class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="flash {{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% else %}
+{% block public %}{% endblock %}
+{% endif %}
+<script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>

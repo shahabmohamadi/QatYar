@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}برگشت از فروش | {{ cfg['app_name'] }}{% endblock %}
+{% block heading %}برگشت از فروش{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">خرید و فروش</span><h1>برگشت از فروش</h1><p>هر برگشت به فاکتور فروش اصلی وصل می‌شود و موجودی را اصلاح می‌کند.</p></div></div>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>شماره برگشت</th><th>فاکتور اصلی</th><th>طرف حساب</th><th>مبلغ</th><th>بازپرداخت</th><th>زمان</th></tr></thead><tbody>{% for row in rows %}<tr><td><a href="{{ url_for('returns.return_detail',return_id=row['id']) }}">{{ row['number'] }}</a></td><td><a href="{{ url_for('invoices.invoice_detail',invoice_id=row['sale_invoice_id']) }}">{{ row['sale_number'] }}</a></td><td>{{ row['party_name'] }}</td><td>{{ money(row['total_rial']) }} ریال</td><td>{{ money(row['refunded']) }} ریال</td><td>{{ row['created_at'] }}</td></tr>{% else %}<tr><td colspan="6" class="empty">هنوز برگشتی ثبت نشده است. از صفحهٔ فاکتور فروش، برگشت جدید بسازید.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.spec
+*.db
+*.db-shm
+*.db-wal
+*.zip
+windows/offline/*.exe
+windows/wheels/*.whl
+
+# Local operational data and private migration notes
+docs/parsian-migration.md
+*.sqlite
+*.sqlite3
+*.bak
+*.bkp
+*.env
+.env*
+*token*.txt
+*password*.txt
+*credential*.txt
+
+.git-local-history/

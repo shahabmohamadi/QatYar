@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}فاکتورهای پارسیان | {{ cfg['app_name'] }}{% endblock %}
+{% block heading %}فاکتورهای پارسیان{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">آرشیو فقط‌خواندنی</span><h1>فاکتورها و برگشت‌ها</h1><p>شماره، تاریخ و مبلغ فاکتورهای سال‌های مالی پارسیان محفوظ است.</p></div></div>
+{% include 'legacy_nav.html' %}
+<form method="get" class="form-grid panel" style="margin-bottom:20px"><label>سال مالی<select name="year"><option value="db_1405" {{ 'selected' if year=='db_1405' else '' }}>۱۴۰۵</option><option value="db_1404" {{ 'selected' if year=='db_1404' else '' }}>۱۴۰۴</option></select></label><label>نوع<select name="kind"><option value="">همه</option>{% for key,label in kinds.items() %}<option value="{{ key }}" {{ 'selected' if kind==key|string else '' }}>{{ label }}</option>{% endfor %}</select></label><label>شماره یا طرف حساب<input name="q" value="{{ q }}"></label><button class="button primary">جستجو</button></form>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>تاریخ</th><th>نوع / شماره</th><th>طرف حساب</th><th>ردیف</th><th>مبلغ</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row['date_jalali'] }}</td><td><a href="{{ url_for('legacy.invoice_detail',invoice_id=row['id']) }}">{{ kinds.get(row['title_code'],'نوع '+row['title_code']|string) }} #{{ row['factor_num'] }}</a></td><td>{{ row['party_name'] or 'نامشخص' }}</td><td>{{ row['lines_count'] }}</td><td>{{ money(row['total_rial']) }} ریال</td></tr>{% else %}<tr><td colspan="5" class="empty">موردی پیدا نشد.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

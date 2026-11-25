@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}تنظیمات | {{ cfg['app_name'] }}{% endblock %}
+{% block heading %}تنظیمات{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">مدیریت برنامه</span><h1>تنظیمات فروشگاه</h1><p>هویت برنامه و قواعد کار روزانه را از اینجا مدیریت کنید.</p></div></div>
+<nav class="settings-nav" aria-label="بخش‌های تنظیمات">
+{% for key,label in [('identity','نام و لوگو'),('inventory','موجودی و شعبه'),('sales','فاکتور و قیمت'),('payments','پرداخت‌ها'),('backup','بکاپ'),('security','امنیت و کاربران'),('updates','به‌روزرسانی'),('system','اطلاعات سیستم')] %}<a class="{{ 'active' if active_tab==key else '' }}" href="{{ url_for('settings.page',tab=key) }}">{{ label }}</a>{% endfor %}
+</nav>
+
+{% if active_tab=='identity' %}
+<section class="panel settings-section" id="identity">
+  <div class="panel-head"><div><span class="eyebrow">هویت بصری</span><h2>نام برنامه، فروشگاه و لوگو</h2></div></div>
+  <div class="settings-preview"><img src="{{ url_for('settings.logo',v=cfg['logo_revision']) }}" alt="لوگوی فعلی"><div><strong>{{ cfg['app_name'] }}</strong><small>{{ cfg['app_tagline'] }}</small></div></div>
+  <form method="post" action="{{ url_for('settings.update',section='identity') }}" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>نام برنامه<input name="app_name" value="{{ cfg['app_name'] }}" maxlength="80" required></label>
+    <label>شعار زیر نام برنامه<input name="app_tagline" value="{{ cfg['app_tagline'] }}" maxlength="160" required></label>
+    <label>نام فروشگاه<input name="shop_name" value="{{ cfg['shop_name'] }}" maxlength="120" required></label>
+    <label>شماره تماس فروشگاه<input name="shop_phone" value="{{ cfg['shop_phone'] }}" maxlength="30" dir="ltr"></label>
+    <label style="grid-column:1/-1">نشانی فروشگاه<input name="shop_address" value="{{ cfg['shop_address'] }}" maxlength="300"></label>
+    <div class="settings-form-footer"><button class="button primary">ذخیره هویت</button></div>
+  </form>
+  <div class="two-cols" style="margin-top:24px">
+    <form method="post" action="{{ url_for('settings.upload_logo') }}" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>لوگوی جدید<input name="logo" type="file" accept="image/png,image/jpeg,image/webp" required></label>
+      <p class="settings-helper">PNG، JPEG یا WebP تا یک مگابایت؛ لوگو در بکاپ برنامه هم ذخیره می‌شود.</p>
+      <button class="button ghost" type="submit">بارگذاری لوگو</button>
+    </form>
+    <div><p class="settings-helper">برای برگشت به نشان اولیه برنامه:</p><form method="post" action="{{ url_for('settings.reset_logo') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button ghost" type="submit">بازگرداندن لوگوی پیش‌فرض</button></form></div>
+  </div>
+</section>
+{% endif %}
+
+{% if active_tab=='inventory' %}
+<section class="panel settings-section" id="inventory">
+  <div class="panel-head"><div><span class="eyebrow">انبار</span><h2>شعبه و موجودی</h2></div></div>
+  <form method="post" action="{{ url_for('settings.update',section='inventory') }}" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>نام شعبهٔ فعلی<input name="branch_name" value="{{ branch['name'] }}" maxlength="120" required></label>
+    <label>حداقل موجودی پیش‌فرض برای کالای جدید<input name="default_min_stock" type="number" min="0" max="100000000" value="{{ cfg['default_min_stock'] }}" required></label>
+    <div class="settings-form-footer"><button class="button primary">ذخیره تنظیمات موجودی</button></div>
+  </form>
+  <p class="setting-note">حداقل موجودی هر کالای موجود جداگانه قابل تغییر است. موجودی منفی در فروش مجاز نیست.</p>
+</section>
+{% endif %}
+
+{% if active_tab=='sales' %}
+<section class="panel settings-section" id="sales">
+  <div class="panel-head"><div><span class="eyebrow">فروش و خرید</span><h2>فاکتور و نوع قیمت</h2></div></div>
+  <form method="post" action="{{ url_for('settings.update',section='sales') }}" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>نوع قیمت پیش‌فرض فروش<select name="default_price_type_id">{% for tier in tiers if tier['is_active'] %}<option value="{{ tier['id'] }}" {{ 'selected' if tier['id']==cfg['default_price_type_id'] else '' }}>{{ tier['label'] }}</option>{% endfor %}</select></label>
+    <label>روش پرداخت پیش‌فرض<select name="default_payment_method"><option value="cash" {{ 'selected' if cfg['default_payment_method']=='cash' else '' }}>{{ cfg['cash_label'] }}</option><option value="bank" {{ 'selected' if cfg['default_payment_method']=='bank' else '' }}>{{ cfg['bank_label'] }}</option></select></label>
+    <label>پیشوند شماره فاکتور فروش<input name="sale_prefix" value="{{ cfg['sale_prefix'] }}" maxlength="8" dir="ltr" required></label>
+    <label>پیشوند شماره فاکتور خرید<input name="purchase_prefix" value="{{ cfg['purchase_prefix'] }}" maxlength="8" dir="ltr" required></label>
+    <label>حداقل تعداد رقم شماره فاکتور<input name="invoice_digits" type="number" min="4" max="12" value="{{ cfg['invoice_digits'] }}" required></label>
+    <div class="settings-form-footer"><button class="button primary">ذخیره تنظیمات فاکتور</button></div>
+  </form>
+  <p class="settings-helper">پیشوند و تعداد رقم فقط روی فاکتورهای جدید اثر می‌گذارند؛ شماره فاکتورهای قبلی ثابت می‌ماند.</p>
+  <div class="panel-head inner"><h2>انواع قیمت</h2></div>
+  <table class="setting-table"><tbody>{% for tier in tiers %}<tr><td><strong>{{ tier['label'] }}</strong> <small class="setting-code">{{ tier['code'] }}</small></td><td><span class="pill {{ 'green' if tier['is_active'] else 'red' }}">{{ 'فعال' if tier['is_active'] else 'غیرفعال' }}</span></td><td><form method="post" action="{{ url_for('settings.toggle_price_type',tier_id=tier['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">{{ 'غیرفعال‌کردن' if tier['is_active'] else 'فعال‌کردن' }}</button></form></td></tr>{% endfor %}</tbody></table>
+  <form method="post" action="{{ url_for('settings.add_price_type') }}" class="form-grid compact"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>نوع قیمت جدید<input name="label" maxlength="50" placeholder="مثلاً پخش ویژه" required></label><button class="button ghost">افزودن</button></form>
+</section>
+{% endif %}
+
+{% if active_tab=='payments' %}
+<section class="panel settings-section" id="payments">
+  <div class="panel-head"><div><span class="eyebrow">حساب‌ها و صندوق</span><h2>نام روش‌های دریافت و پرداخت</h2></div></div>
+  <form method="post" action="{{ url_for('settings.update',section='payments') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>عنوان صندوق نقدی<input name="cash_label" value="{{ cfg['cash_label'] }}" maxlength="40" required></label><label>عنوان پرداخت بانکی<input name="bank_label" value="{{ cfg['bank_label'] }}" maxlength="40" required></label><div class="settings-form-footer"><button class="button primary">ذخیره عنوان‌ها</button></div></form>
+  <p class="settings-helper">کد حساب‌ها و گردش‌های قبلی تغییر نمی‌کند؛ عنوان‌های تازه در فاکتورها و گزارش‌ها نمایش داده می‌شوند. واحد پول این نصب ریال است.</p>
+<div class="panel-head inner"><h2>حساب‌های دریافت و پرداخت</h2></div>
+<p class="settings-helper">در فاکتور فروش و خرید حساب را برای دریافت یا پرداخت انتخاب کنید. گردش‌های قبلی به صندوق و بانک پیش‌فرض وصل شده‌اند.</p>
+<table class="setting-table"><tbody>{% for account in accounts %}<tr><td>{{ account['name'] }}</td><td>{{ 'صندوق' if account['kind']=='cash' else 'بانک' }}</td><td><form method="post" action="{{ url_for('settings.toggle_account',account_id=account['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>{{ 'غیرفعال‌کردن' if account['is_active'] else 'فعال‌کردن' }}</button></form></td></tr>{% endfor %}</tbody></table>
+<form method="post" action="{{ url_for('settings.add_account') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>نام حساب جدید<input name="name" maxlength="80" required></label><label>نوع<select name="kind"><option value="bank">بانک</option><option value="cash">صندوق</option></select></label><button class="button ghost">افزودن حساب</button></form>
+</section>
+{% endif %}
+
+{% if active_tab=='backup' %}
+<section class="panel settings-section" id="backup">
+  <div class="panel-head"><div><span class="eyebrow">حفاظت از داده</span><h2>بکاپ و انتقال به رایانه جدید</h2></div></div>
+  <form method="post" action="{{ url_for('settings.update',section='backup') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>بکاپ خودکار روزانه<select name="backup_enabled"><option value="on" {{ 'selected' if cfg['backup_enabled'] else '' }}>فعال</option><option value="off" {{ 'selected' if not cfg['backup_enabled'] else '' }}>غیرفعال</option></select></label><label>مدت نگهداری بکاپ روزانه (روز)<input name="backup_retention_days" type="number" min="1" max="365" value="{{ cfg['backup_retention_days'] }}" required></label><label style="grid-column:1/-1">پوشه بکاپ در ویندوز مرکزی<input name="backup_directory" dir="ltr" value="{{ cfg['backup_directory'] }}" maxlength="260" placeholder="{{ backup_default }}"></label><div class="settings-form-footer"><button class="button primary">ذخیره بکاپ</button></div></form>
+  <p class="settings-helper">اگر مسیر خالی باشد، از <span class="ltr">{{ backup_default }}</span> استفاده می‌شود. وظیفه ویندوز هر روز ساعت ۲ بامداد تنظیمات این بخش را می‌خواند.</p>
+  <form method="post" action="{{ url_for('backup.download_backup') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button ghost" type="submit">دانلود بکاپ همین حالا</button></form>
+  {% if runs %}<div class="panel-head inner"><h2>آخرین بکاپ‌های زمان‌بندی‌شده</h2></div><div class="table-wrap"><table><thead><tr><th>زمان</th><th>نتیجه</th><th>مسیر</th><th>توضیح</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run['created_at'] }}</td><td><span class="pill {{ 'green' if run['outcome']=='success' else 'red' }}">{{ 'موفق' if run['outcome']=='success' else 'خطا' }}</span></td><td class="ltr">{{ run['destination'] }}</td><td>{{ run['detail'] or '—' }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+</section>
+{% endif %}
+
+{% if active_tab=='security' %}
+<section class="panel settings-section" id="security">
+  <div class="panel-head"><div><span class="eyebrow">کاربران و دسترسی</span><h2>امنیت ورود</h2></div></div>
+  <form method="post" action="{{ url_for('settings.update',section='security') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>اعتبار هر ورود (ساعت)<input name="session_hours" type="number" min="1" max="72" value="{{ cfg['session_hours'] }}" required></label><label>حداکثر تلاش ناموفق ورود<input name="login_max_attempts" type="number" min="3" max="10" value="{{ cfg['login_max_attempts'] }}" required></label><label>مدت محدودیت پس از خطا (دقیقه)<input name="login_lock_minutes" type="number" min="1" max="60" value="{{ cfg['login_lock_minutes'] }}" required></label><div class="settings-form-footer"><button class="button primary">ذخیره امنیت ورود</button></div></form>
+  <p class="settings-helper">تغییر اعتبار ورود روی نشست‌های تازه اعمال می‌شود.</p>
+  <div class="panel-head inner"><h2>کاربران فعلی</h2><div class="setting-actions"><a class="button ghost" href="{{ url_for('users.list_users') }}">مدیریت کاربران</a><a class="button ghost" href="{{ url_for('users.profile') }}">تغییر رمز خودم</a></div></div>
+  <table class="setting-table"><tbody>{% for user in users %}<tr><td>{{ user['display_name'] }} <small class="setting-code">{{ user['username'] }}</small></td><td>{{ {'owner':'مالک','manager':'مدیر','clerk':'فروشنده'}[user['role']] }}</td><td><span class="pill {{ 'green' if user['is_active'] else 'red' }}">{{ 'فعال' if user['is_active'] else 'غیرفعال' }}</span></td></tr>{% endfor %}</tbody></table>
+</section>
+{% endif %}
+
+{% if active_tab=='updates' %}
+<section class="panel settings-section" id="updates"><div class="panel-head"><h2>به‌روزرسانی از GitHub</h2></div>
+<div class="detail-grid"><div><small>نسخه نصب‌شده</small><strong>{{ app_version }}</strong></div><div><small>آخرین بررسی</small><strong>{{ update_info['checked_at'] or 'هنوز بررسی نشده' }}</strong></div></div>
+<form method="post" action="{{ url_for('updates.set_repo') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>مخزن انتشار عمومی (owner/repo)<input name="github_repo" dir="ltr" value="{{ update_info['github_repo'] }}" placeholder="owner/repo"></label><button class="button ghost">ذخیره مخزن</button></form>
+{% if update_info['github_repo'] %}<form method="post" action="{{ url_for('updates.check') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button ghost">بررسی نسخه جدید</button></form>{% endif %}
+{% if update_info['release_tag'] %}<div class="panel-head inner"><h2>نسخه {{ update_info['release_tag'] }}</h2></div><p>تغییرات نسخه:</p><pre class="release-notes">{{ update_info['release_notes'] or 'یادداشت تغییرات ثبت نشده است.' }}</pre>
+{% if version_key(update_info['release_tag']) > version_key(app_version) %}<form method="post" action="{{ url_for('updates.apply') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button primary">اعمال این نسخه</button></form>{% else %}<p class="settings-helper">نسخه نصب‌شده به‌روز است.</p>{% endif %}{% endif %}
+{% if update_status %}<p class="setting-note">{{ update_status }}</p>{% endif %}
+<p class="settings-helper">برای نصب خودکار، نسخه باید در GitHub Releases با فایل QatYar-Windows.zip و اثرانگشت SHA256 منتشر شده باشد. پیش از نصب از داده و کد بکاپ گرفته می‌شود.</p></section>
+{% endif %}
+
+{% if active_tab=='system' %}
+<section class="panel settings-section" id="system">
+  <div class="panel-head"><div><span class="eyebrow">اطلاعات نصب</span><h2>وضعیت سیستم</h2></div></div>
+  <div class="detail-grid"><div><small>واحد پول داده‌ها</small><strong>ریال</strong></div><div><small>پایگاه داده</small><strong>SQLite محلی</strong></div><div><small>نسخه ساختار داده</small><strong>{{ schema_version }}</strong></div><div><small>نشانی فعلی وب</small><strong class="ltr">{{ web_address }}</strong></div><div><small>مسیر فایل داده</small><strong class="ltr">{{ database_path }}</strong></div><div><small>آخرین تغییر تنظیمات</small><strong>{{ cfg['updated_at'] }}</strong></div></div>
+  <p class="settings-helper">برای جابجایی رایانه، بستهٔ برنامه را روی ویندوز جدید نصب و از فایل بکاپ این نصب استفاده کنید. تغییرات ساختار داده با migration نسخه‌دار انجام می‌شود.</p>
+</section>
+{% endif %}
+{% endblock %}

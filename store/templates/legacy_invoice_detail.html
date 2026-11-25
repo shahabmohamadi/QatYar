@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}فاکتور پارسیان | {{ cfg['app_name'] }}{% endblock %}
+{% block heading %}فاکتور پارسیان{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">{{ invoice['source_db'][3:] }} · فقط‌خواندنی</span><h1>{{ kinds.get(invoice['title_code'],'فاکتور') }} #{{ invoice['factor_num'] }}</h1><p>{{ invoice['date_jalali'] }} · {{ invoice['party_name'] or 'طرف حساب نامشخص' }}</p></div><a class="button ghost" href="{{ url_for('legacy.invoices',year=invoice['source_db']) }}">بازگشت</a></div>
+<section class="stats"><article class="stat-card mint"><span>جمع ثبت‌شده در پارسیان</span><strong>{{ money(invoice['total_rial']) }}</strong><small>ریال</small></article><article class="stat-card sand"><span>کد طرف حساب</span><strong>{{ invoice['party_key'] }}</strong></article></section>
+<section class="panel"><div class="panel-head"><h2>ردیف‌های فاکتور</h2></div><div class="table-wrap"><table><thead><tr><th>کد کالا</th><th>نام</th><th>تعداد</th><th>قیمت واحد</th><th>جمع ردیف</th></tr></thead><tbody>{% for row in lines %}<tr><td>{{ row['product_code'] }}</td><td>{{ row['product_name'] }}</td><td>{{ row['quantity'] }}</td><td>{{ money(row['unit_price_rial']) }}</td><td>{{ money(row['line_total_rial']) }}</td></tr>{% else %}<tr><td colspan="5" class="empty">سرآیند این فاکتور در پارسیان ردیف ندارد.</td></tr>{% endfor %}</tbody></table></div><p class="settings-helper">مبلغ‌ها همان ریال ثبت‌شده در پارسیان هستند.</p></section>
+{% endblock %}

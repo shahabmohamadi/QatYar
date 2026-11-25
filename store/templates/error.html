@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}خطا | {{ cfg['app_name'] }}{% endblock %}
+{% block heading %}خطا{% endblock %}
+{% block content %}<section class="panel narrow"><h1>{{ message }}</h1><p><a class="button ghost" href="{{ url_for('web.dashboard') }}">بازگشت به پیشخوان</a></p></section>{% endblock %}
+{% block public %}<div class="login-page"><section class="login-side"><div class="login-card"><h1>{{ message }}</h1><a class="button ghost" href="{{ url_for('auth.login') }}">بازگشت به ورود</a></div></section></div>{% endblock %}

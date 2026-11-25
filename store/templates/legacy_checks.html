@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}چک‌های پارسیان | {{ cfg['app_name'] }}{% endblock %}
+{% block heading %}چک‌های پارسیان{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">اسناد قدیمی</span><h1>چک‌های پارسیان</h1><p>وضعیت‌های اختصاصی پارسیان با کد اصلی‌شان نگه داشته شده‌اند.</p></div></div>
+{% include 'legacy_nav.html' %}
+<div class="setting-actions" style="margin-bottom:20px"><a class="button ghost" href="{{ url_for('legacy.checks',year='db_1405') }}">۱۴۰۵</a><a class="button ghost" href="{{ url_for('legacy.checks',year='db_1404') }}">۱۴۰۴</a></div>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>سررسید</th><th>شماره</th><th>بانک</th><th>مبلغ</th><th>کد وضعیت</th><th>فعال</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row['due_date_jalali'] }}</td><td>{{ row['check_number'] }}</td><td>{{ row['bank_name'] }}</td><td>{{ money(row['amount_rial']) }} ریال</td><td>{{ row['status_code'] }}</td><td>{{ 'بله' if row['is_active'] else 'خیر' }}</td></tr>{% else %}<tr><td colspan="6" class="empty">چکی ثبت نشده است.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}حساب من | {{ cfg['app_name'] }}{% endblock %}
+{% block heading %}حساب من{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">امنیت حساب</span><h1>{{ g.user['display_name'] }}</h1><p>نام کاربری: <span class="ltr">{{ g.user['username'] }}</span></p></div></div>
+<section class="panel narrow"><div class="panel-head"><h2>تغییر رمز عبور</h2></div><form method="post" action="{{ url_for('users.change_password') }}" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>رمز فعلی<input name="current_password" type="password" required autocomplete="current-password"></label><label>رمز جدید؛ حداقل ۱۲ نویسه<input name="new_password" type="password" minlength="12" required autocomplete="new-password"></label><button class="button primary">تغییر رمز</button></form></section>
+{% endblock %}
