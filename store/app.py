@@ -1,11 +1,12 @@
 """Application factory; each business area lives in its own module."""
 import os
 
-from flask import Flask, g, render_template
+from flask import Flask, g, render_template, request
 
 from .auth import auth, check_csrf, load_user
 from .backup import backup
 from .catalog import catalog
+from .calendar import display_date
 from .checks import checks
 from .db import close_db, data_dir, get_db, migrate
 from .invoices import invoices
@@ -17,6 +18,7 @@ from .purchase_returns import purchase_returns
 from .reports import reports
 from .returns import returns
 from .settings import settings_bp, settings_for_request
+from .transfer import transfer
 from .users import users
 from .updates import updates
 
@@ -49,6 +51,11 @@ def create_app():
     app.register_blueprint(updates)
     app.register_blueprint(backup)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(transfer)
+    @app.before_request
+    def upload_limit():
+        if request.endpoint == 'transfer.upload':
+            request.max_content_length = 32 * 1024 * 1024
     app.before_request(load_user)
     app.before_request(check_csrf)
     app.teardown_appcontext(close_db)
@@ -59,6 +66,7 @@ def create_app():
         return {'money': lambda number: f'{int(number or 0):,}',
                 'csrf_token': lambda: g.csrf_token or '',
                 'page_url': page_url,
+                'show_date': lambda value: display_date(value, settings_for_request()['calendar']),
                 'cfg': settings_for_request(),
                 'branch_name': branch['name'] if branch else ''}
 

@@ -12,7 +12,7 @@ def main():
     for directory in ('store', 'windows'):
         files.extend(path for path in (root / directory).rglob('*') if path.is_file()
                      and '__pycache__' not in path.parts)
-    files.append(root / 'docs' / 'architecture.md')
+    files.extend((root / 'docs' / name for name in ('architecture.md', 'accounting-transfer.md')))
     files = sorted(files)
     with zipfile.ZipFile(destination, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in files:

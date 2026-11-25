@@ -12,6 +12,30 @@ from .utils import audit, integer
 
 invoices = Blueprint('invoices', __name__)
 
+UNIFIED_INVOICES_SQL = '''SELECT * FROM (
+    SELECT i.id,i.number,i.kind,p.name party_name,i.total_rial,i.created_at,
+      i.total_rial
+      - CASE WHEN i.kind='sale' THEN COALESCE((SELECT SUM(total_rial) FROM sales_returns r WHERE r.sale_invoice_id=i.id),0)
+        ELSE COALESCE((SELECT SUM(total_rial) FROM purchase_returns r WHERE r.purchase_invoice_id=i.id),0) END
+      - COALESCE((SELECT SUM(amount_rial) FROM money_movements m WHERE m.invoice_id=i.id),0)
+      - COALESCE((SELECT SUM(amount_rial) FROM payment_checks c WHERE c.invoice_id=i.id AND c.status='cleared'),0)
+      + CASE WHEN i.kind='sale' THEN COALESCE((SELECT SUM(rf.amount_rial) FROM sales_return_refunds rf
+        JOIN sales_returns sr ON sr.id=rf.return_id WHERE sr.sale_invoice_id=i.id),0)
+        ELSE COALESCE((SELECT SUM(rf.amount_rial) FROM purchase_return_refunds rf
+        JOIN purchase_returns pr ON pr.id=rf.return_id WHERE pr.purchase_invoice_id=i.id),0) END balance_rial,
+      'current' source,1 sort_group
+    FROM invoices i JOIN parties p ON p.id=i.party_id
+    WHERE (?='' OR i.kind=?)
+    UNION ALL
+    SELECT h.id,CAST(h.factor_num AS TEXT),
+      CASE h.title_code WHEN 1 THEN 'sale' WHEN 2 THEN 'purchase'
+        WHEN 3 THEN 'purchase_return' ELSE 'sale_return' END,
+      COALESCE(NULLIF(h.party_name,''),'—'),h.total_rial,h.date_jalali,
+      NULL,'transferred',0
+    FROM legacy_invoices h WHERE h.title_code IN (1,2,3,4)
+      AND (?='' OR CASE WHEN h.title_code IN (1,4) THEN 'sale' ELSE 'purchase' END=?)
+    ) ORDER BY sort_group DESC,created_at DESC,id DESC'''
+
 
 def invoice_form_data(db, kind):
     party_kinds = ('customer', 'both') if kind == 'sale' else ('supplier', 'both')
@@ -154,25 +178,8 @@ def list_invoices():
     kind = request.args.get('kind', '')
     if kind not in ('', 'sale', 'purchase'):
         kind = ''
-    rows, pager = paginate_query(db, '''SELECT i.*,p.name party_name,
-        i.total_rial
-        - CASE WHEN i.kind='sale' THEN COALESCE((SELECT SUM(total_rial) FROM sales_returns r WHERE r.sale_invoice_id=i.id),0)
-          ELSE COALESCE((SELECT SUM(total_rial) FROM purchase_returns r WHERE r.purchase_invoice_id=i.id),0) END
-        - COALESCE((SELECT SUM(amount_rial) FROM money_movements m WHERE m.invoice_id=i.id),0)
-        - COALESCE((SELECT SUM(amount_rial) FROM payment_checks c WHERE c.invoice_id=i.id AND c.status='cleared'),0)
-        + CASE WHEN i.kind='sale' THEN COALESCE((SELECT SUM(rf.amount_rial) FROM sales_return_refunds rf
-          JOIN sales_returns sr ON sr.id=rf.return_id WHERE sr.sale_invoice_id=i.id),0)
-          ELSE COALESCE((SELECT SUM(rf.amount_rial) FROM purchase_return_refunds rf
-          JOIN purchase_returns pr ON pr.id=rf.return_id WHERE pr.purchase_invoice_id=i.id),0) END balance_rial
-        FROM invoices i JOIN parties p ON p.id=i.party_id
-        WHERE (?='' OR i.kind=?) ORDER BY i.id DESC''', (kind, kind))
-    historical, historical_pager = paginate_query(db, '''SELECT id,title_code,factor_num,party_name,total_rial,date_jalali
-        FROM legacy_invoices WHERE source_db='db_1405' AND title_code IN (1,2,3,4)
-        ORDER BY date_jalali DESC,id DESC''', param='page_historical')
-    historical_count = historical_pager.total
-    return render_template('invoices.html', invoices=rows, kind=kind,
-                           historical=historical, historical_count=historical_count,
-                           pager=pager, historical_pager=historical_pager)
+    rows, pager = paginate_query(db, UNIFIED_INVOICES_SQL, (kind, kind, kind, kind))
+    return render_template('invoices.html', invoices=rows, kind=kind, pager=pager)
 
 
 @invoices.route('/invoices/new/<kind>', methods=['GET', 'POST'])

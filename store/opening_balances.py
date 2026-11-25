@@ -38,14 +38,14 @@ def activate_existing():
                 raise ValueError('ماندهٔ انتقالی پس از شروع عملیات جدید باید با حسابدار تطبیق داده شود.')
             imported = db.execute('SELECT id FROM legacy_imports ORDER BY id DESC LIMIT 1').fetchone()
             if not imported:
-                raise ValueError('آرشیو پارسیان وارد نشده است.')
+                raise ValueError('دادهٔ انتقالی وارد نشده است.')
             count = populate(db, imported['id'])
             source_total = db.execute('''SELECT COALESCE(SUM(debit_rial-credit_rial),0) FROM legacy_journal
                 WHERE import_id=? AND source_db='db_1405' AND kol_code=12 AND moeen_code=2
                 AND tafsili_code<>0''', (imported['id'],)).fetchone()[0]
             target_total = db.execute('SELECT COALESCE(SUM(amount_rial),0) FROM opening_party_balances').fetchone()[0]
             if source_total != target_total:
-                raise ValueError('ماندهٔ طرف‌حساب‌ها با دفتر پارسیان یکسان نیست.')
+                raise ValueError('ماندهٔ طرف‌حساب‌ها با دفتر اسناد یکسان نیست.')
             owner = db.execute("SELECT id FROM users WHERE role='owner' ORDER BY id LIMIT 1").fetchone()
             db.execute('''INSERT INTO audit_log(actor_user_id,action,entity_type,detail)
                 VALUES (?,?,?,?)''', (owner['id'] if owner else None,
@@ -93,15 +93,15 @@ def settle(party_id):
         with transaction(get_db()) as db:
             remaining = remaining_rial(db, party_id)
             if remaining is None or remaining == 0:
-                raise ValueError('ماندهٔ قابل تسویهٔ پارسیان وجود ندارد.')
+                raise ValueError('ماندهٔ قابل تسویهٔ ابتدای دوره وجود ندارد.')
             if amount > abs(remaining):
-                raise ValueError('مبلغ از ماندهٔ پارسیان بیشتر است.')
+                raise ValueError('مبلغ از ماندهٔ ابتدای دوره بیشتر است.')
             direction = 'in' if remaining > 0 else 'out'
             cur = db.execute('''INSERT INTO opening_settlements(party_id,direction,method,amount_rial,note,created_by)
                 VALUES (?,?,?,?,?,?)''', (party_id, direction, method, amount, note, g.user['id']))
             audit(db, 'parsian.opening.settle', 'opening_settlement', cur.lastrowid,
                   {'party_id': party_id, 'amount_rial': amount, 'direction': direction})
-        flash('تسویهٔ ماندهٔ پارسیان ثبت شد.', 'success')
+        flash('تسویهٔ ماندهٔ ابتدای دوره ثبت شد.', 'success')
     except (ValueError, sqlite3.IntegrityError) as exc:
         flash(str(exc), 'error')
     return redirect(url_for('parties.party_detail', party_id=party_id))

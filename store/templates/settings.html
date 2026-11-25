@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head"><div><span class="eyebrow">مدیریت برنامه</span><h1>تنظیمات فروشگاه</h1><p>هویت برنامه و قواعد کار روزانه را از اینجا مدیریت کنید.</p></div></div>
 <nav class="settings-nav" aria-label="بخش‌های تنظیمات">
-{% for key,label in [('identity','نام و لوگو'),('inventory','موجودی و شعبه'),('sales','فاکتور و قیمت'),('payments','پرداخت‌ها'),('backup','بکاپ'),('security','امنیت و کاربران'),('updates','به‌روزرسانی'),('system','اطلاعات سیستم')] %}<a class="{{ 'active' if active_tab==key else '' }}" href="{{ url_for('settings.page',tab=key) }}">{{ label }}</a>{% endfor %}
+{% for key,label in [('identity','نام و لوگو'),('inventory','موجودی و شعبه'),('sales','فاکتور و قیمت'),('payments','پرداخت‌ها'),('calendar','تاریخ و تقویم'),('backup','بکاپ و انتقال داده'),('security','امنیت و کاربران'),('updates','به‌روزرسانی'),('system','اطلاعات سیستم')] %}<a class="{{ 'active' if active_tab==key else '' }}" href="{{ url_for('settings.page',tab=key) }}">{{ label }}</a>{% endfor %}
 </nav>
 
 {% if active_tab=='identity' %}
@@ -81,7 +81,13 @@
   <form method="post" action="{{ url_for('settings.update',section='backup') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>بکاپ خودکار روزانه<select name="backup_enabled"><option value="on" {{ 'selected' if cfg['backup_enabled'] else '' }}>فعال</option><option value="off" {{ 'selected' if not cfg['backup_enabled'] else '' }}>غیرفعال</option></select></label><label>مدت نگهداری بکاپ روزانه (روز)<input name="backup_retention_days" type="number" min="1" max="365" value="{{ cfg['backup_retention_days'] }}" required></label><label style="grid-column:1/-1">پوشه بکاپ در ویندوز مرکزی<input name="backup_directory" dir="ltr" value="{{ cfg['backup_directory'] }}" maxlength="260" placeholder="{{ backup_default }}"></label><div class="settings-form-footer"><button class="button primary">ذخیره بکاپ</button></div></form>
   <p class="settings-helper">اگر مسیر خالی باشد، از <span class="ltr">{{ backup_default }}</span> استفاده می‌شود. وظیفه ویندوز هر روز ساعت ۲ بامداد تنظیمات این بخش را می‌خواند.</p>
   <form method="post" action="{{ url_for('backup.download_backup') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button ghost" type="submit">دانلود بکاپ همین حالا</button></form>
-  {% if runs %}<div class="panel-head inner"><h2>آخرین بکاپ‌های زمان‌بندی‌شده</h2></div><div class="table-wrap"><table><thead><tr><th>زمان</th><th>نتیجه</th><th>مسیر</th><th>توضیح</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run['created_at'] }}</td><td><span class="pill {{ 'green' if run['outcome']=='success' else 'red' }}">{{ 'موفق' if run['outcome']=='success' else 'خطا' }}</span></td><td class="ltr">{{ run['destination'] }}</td><td>{{ run['detail'] or '—' }}</td></tr>{% endfor %}</tbody></table></div>{% with pager=runs_pager %}{% include 'pagination.html' %}{% endwith %}{% endif %}
+  {% if runs %}<div class="panel-head inner"><h2>آخرین بکاپ‌های زمان‌بندی‌شده</h2></div><div class="table-wrap"><table><thead><tr><th>زمان</th><th>نتیجه</th><th>مسیر</th><th>توضیح</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ show_date(run['created_at']) }}</td><td><span class="pill {{ 'green' if run['outcome']=='success' else 'red' }}">{{ 'موفق' if run['outcome']=='success' else 'خطا' }}</span></td><td class="ltr">{{ run['destination'] }}</td><td>{{ run['detail'] or '—' }}</td></tr>{% endfor %}</tbody></table></div>{% with pager=runs_pager %}{% include 'pagination.html' %}{% endwith %}{% endif %}
+</section>
+<section class="panel settings-section"><div class="panel-head"><div><span class="eyebrow">شروع کار با داده‌های موجود</span><h2>ورود اطلاعات حسابداری</h2></div></div>
+  <p class="settings-helper">در یک نصب تازه و خالی، فایل انتقال استاندارد را وارد کنید تا کالا، موجودی، قیمت، طرف‌حساب، ماندهٔ ابتدای دوره، فاکتور و چک در بخش‌های اصلی برنامه قرار بگیرند. بستهٔ انتقالی سازگارِ موجود نیز شناسایی می‌شود.</p>
+  <form method="post" action="{{ url_for('transfer.upload') }}" enctype="multipart/form-data" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>فایل ZIP انتقال<input type="file" name="archive" accept=".zip,application/zip" required></label><div class="settings-form-footer"><button class="button primary">بررسی و ورود داده</button><a class="button ghost" href="{{ url_for('transfer.download_template') }}">دانلود قالب استاندارد</a></div></form>
+  <p class="settings-helper">ورود دوباره روی فروشگاه دارای داده مجاز نیست. بکاپ بومیِ ناشناخته تا زمانی که قالب آن بررسی و مبدل اختصاصی ساخته نشود قابل خواندن نیست؛ خروجی CSV را می‌توان مطابق قالب استاندارد آماده کرد. سقف بارگذاری وب ۳۰ مگابایت است.</p>
+  {% if import_count %}<a class="text-link" href="{{ url_for('legacy.overview') }}">گزارش تطبیق داده‌های انتقالی ←</a>{% endif %}
 </section>
 {% endif %}
 
@@ -97,7 +103,7 @@
 
 {% if active_tab=='updates' %}
 <section class="panel settings-section" id="updates"><div class="panel-head"><h2>به‌روزرسانی از GitHub</h2></div>
-<div class="detail-grid"><div><small>نسخه نصب‌شده</small><strong>{{ app_version }}</strong></div><div><small>آخرین بررسی</small><strong>{{ update_info['checked_at'] or 'هنوز بررسی نشده' }}</strong></div></div>
+<div class="detail-grid"><div><small>نسخه نصب‌شده</small><strong>{{ app_version }}</strong></div><div><small>آخرین بررسی</small><strong>{{ show_date(update_info['checked_at']) if update_info['checked_at'] else 'هنوز بررسی نشده' }}</strong></div></div>
 <div class="setting-note">مخزن نسخه‌ها: <strong class="ltr">{{ update_info['github_repo'] }}</strong></div>
 {% if not token_configured %}<p class="flash error">توکن خواندن مخزن خصوصی روی این ویندوز تنظیم نشده است. آن را با گزینهٔ GitHubTokenFile در نصاب وارد کنید.</p>{% endif %}
 {% if update_info['github_repo'] and token_configured %}<form method="post" action="{{ url_for('updates.check') }}" data-update-check-form><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button ghost">بررسی نسخه جدید</button></form>{% endif %}
@@ -108,10 +114,19 @@
 <p class="settings-helper">برای این مخزن خصوصی، هر نصب باید توکن خواندن اختصاصی خود را روی ویندوز مرکزی داشته باشد. نسخه باید در GitHub Releases با فایل QatYar-Windows.zip و اثرانگشت SHA256 منتشر شده باشد. پیش از نصب از داده و کد بکاپ گرفته می‌شود.</p></section>
 {% endif %}
 
+{% if active_tab=='calendar' %}
+<section class="panel settings-section"><div class="panel-head"><h2>تاریخ و تقویم</h2></div>
+  <form method="post" action="{{ url_for('settings.update',section='calendar') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>تقویم نمایش و ورود تاریخ<select name="calendar"><option value="jalali" {{ 'selected' if cfg['calendar']=='jalali' else '' }}>شمسی</option><option value="gregorian" {{ 'selected' if cfg['calendar']=='gregorian' else '' }}>میلادی</option></select></label>
+    <div class="settings-form-footer"><button class="button primary">ذخیره تقویم</button></div>
+  </form><p class="settings-helper">این انتخاب تاریخ‌های ثبت‌شده را تغییر نمی‌دهد؛ نمایش و ورود تاریخ در گزارش‌ها و چک‌ها را عوض می‌کند. تاریخ‌های انتقالی شمسی نیز هنگام نمایش به تقویم انتخاب‌شده تبدیل می‌شوند.</p>
+</section>
+{% endif %}
+
 {% if active_tab=='system' %}
 <section class="panel settings-section" id="system">
   <div class="panel-head"><div><span class="eyebrow">اطلاعات نصب</span><h2>وضعیت سیستم</h2></div></div>
-  <div class="detail-grid"><div><small>واحد پول داده‌ها</small><strong>ریال</strong></div><div><small>پایگاه داده</small><strong>SQLite محلی</strong></div><div><small>نسخه ساختار داده</small><strong>{{ schema_version }}</strong></div><div><small>نشانی فعلی وب</small><strong class="ltr">{{ web_address }}</strong></div><div><small>مسیر فایل داده</small><strong class="ltr">{{ database_path }}</strong></div><div><small>آخرین تغییر تنظیمات</small><strong>{{ cfg['updated_at'] }}</strong></div></div>
+  <div class="detail-grid"><div><small>واحد پول داده‌ها</small><strong>ریال</strong></div><div><small>پایگاه داده</small><strong>SQLite محلی</strong></div><div><small>نسخه ساختار داده</small><strong>{{ schema_version }}</strong></div><div><small>نشانی فعلی وب</small><strong class="ltr">{{ web_address }}</strong></div><div><small>مسیر فایل داده</small><strong class="ltr">{{ database_path }}</strong></div><div><small>آخرین تغییر تنظیمات</small><strong>{{ show_date(cfg['updated_at']) }}</strong></div></div>
   <p class="settings-helper">برای جابجایی رایانه، بستهٔ برنامه را روی ویندوز جدید نصب و از فایل بکاپ این نصب استفاده کنید. تغییرات ساختار داده با migration نسخه‌دار انجام می‌شود.</p>
 </section>
 {% endif %}

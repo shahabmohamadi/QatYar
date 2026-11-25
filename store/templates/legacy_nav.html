@@ -1,7 +1,7 @@
-<nav class="settings-nav" aria-label="بخش‌های تاریخچه پارسیان">
+<nav class="settings-nav" aria-label="گزارش‌های دادهٔ انتقالی">
   <a href="{{ url_for('legacy.overview') }}">خلاصه</a>
   <a href="{{ url_for('legacy.invoices', year=year|default('db_1405')) }}">فاکتورها و برگشت‌ها</a>
   <a href="{{ url_for('legacy.stock', year=year|default('db_1405')) }}">موجودی انبار</a>
   <a href="{{ url_for('legacy.checks', year=year|default('db_1405')) }}">چک‌ها</a>
-  <a href="{{ url_for('legacy.accounts', year=year|default('db_1405')) }}">سود و زیان و اسناد</a>
+  <a href="{{ url_for('legacy.accounts', year=year|default('db_1405')) }}">دفتر اسناد</a>
 </nav>

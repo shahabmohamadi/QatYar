@@ -33,7 +33,13 @@ def list_parties():
         FROM opening_party_balances b LEFT JOIN opening_settlements s ON s.party_id=b.party_id
         WHERE b.party_id IN (''' + ','.join('?' for _ in rows) + ''') GROUP BY b.party_id''',
         [row['id'] for row in rows])} if rows else {}
-    parties = [{**dict(row), 'opening_rial': opening.get(row['id'])} for row in rows]
+    parties = []
+    for row in rows:
+        item = dict(row)
+        transferred = opening.get(row['id']) or 0
+        item['receivable'] += max(0, transferred)
+        item['payable'] += max(0, -transferred)
+        parties.append(item)
     return render_template('parties.html', parties=parties, pager=pager)
 
 
@@ -94,10 +100,12 @@ def party_detail(party_id):
       + COALESCE((SELECT SUM(r.amount_rial) FROM purchase_return_refunds r JOIN purchase_returns pr ON pr.id=r.return_id WHERE pr.party_id=?),0) payable''',
       (party_id, party_id, party_id, party_id, party_id, party_id, party_id, party_id, party_id, party_id)).fetchone()
     opening_rial = remaining_rial(db, party_id)
+    receivable = balances['receivable'] + max(0, opening_rial or 0)
+    payable = balances['payable'] + max(0, -(opening_rial or 0))
     opening_settlements, settlements_pager = paginate_query(db, '''SELECT * FROM opening_settlements
         WHERE party_id=? ORDER BY id DESC''', (party_id,), param='page_settlements')
     return render_template('party_detail.html', party=party, invoices=invoices, movements=movements,
-                           receivable=balances['receivable'], payable=balances['payable'],
+                           receivable=receivable, payable=payable,
                            opening_rial=opening_rial, opening_settlements=opening_settlements,
                            invoices_pager=invoices_pager, movements_pager=movements_pager,
                            settlements_pager=settlements_pager)

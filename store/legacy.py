@@ -2,7 +2,7 @@
 import json
 from flask import Blueprint, abort, render_template, request
 
-from .auth import require_role
+from .auth import require_login, require_role
 from .db import get_db
 from .pagination import paginate_items, paginate_query
 
@@ -16,8 +16,15 @@ KIND_LABELS = {
 
 
 def year_arg():
-    year = request.args.get('year', 'db_1405')
-    return year if year in ('db_1404', 'db_1405') else 'db_1405'
+    years = year_options()
+    requested = request.args.get('year', '')
+    return requested if requested in years else (years[0] if years else 'db_1405')
+
+
+def year_options():
+    return [row[0] for row in get_db().execute('''SELECT source_db FROM legacy_invoices
+        UNION SELECT source_db FROM legacy_stock UNION SELECT source_db FROM legacy_checks
+        UNION SELECT source_db FROM legacy_journal ORDER BY source_db DESC''')]
 
 
 @legacy.get('/legacy')
@@ -26,17 +33,19 @@ def overview():
     db = get_db()
     latest = db.execute('SELECT * FROM legacy_imports ORDER BY id DESC LIMIT 1').fetchone()
     if not latest:
-        return render_template('legacy.html', latest=None)
+        return render_template('legacy.html', latest=None, year=year_arg())
     counts = db.execute('''SELECT source_db,
       (SELECT COUNT(*) FROM legacy_invoices i WHERE i.source_db=r.source_db) invoices,
       (SELECT COUNT(*) FROM legacy_journal j WHERE j.source_db=r.source_db) journal,
       (SELECT COUNT(*) FROM legacy_checks c WHERE c.source_db=r.source_db) checks,
       (SELECT COUNT(*) FROM legacy_stock s WHERE s.source_db=r.source_db AND s.quantity<0) negative_stock
-      FROM legacy_records r GROUP BY source_db ORDER BY source_db''').fetchall()
+      FROM (SELECT source_db FROM legacy_records UNION SELECT source_db FROM legacy_invoices
+            UNION SELECT source_db FROM legacy_stock UNION SELECT source_db FROM legacy_checks) r
+      GROUP BY source_db ORDER BY source_db''').fetchall()
     warnings = json.loads(latest['warning_json'])
     counts_page, counts_pager = paginate_items(counts, param='page_years')
     warnings_page, warnings_pager = paginate_items(list(warnings.items()), param='page_warnings')
-    return render_template('legacy.html', latest=latest, counts=counts_page,
+    return render_template('legacy.html', latest=latest, year=year_arg(), counts=counts_page,
                            warnings=warnings_page, counts_pager=counts_pager,
                            warnings_pager=warnings_pager)
 
@@ -55,11 +64,12 @@ def invoices():
       AND (?='' OR CAST(factor_num AS TEXT) LIKE ? OR party_name LIKE ?)
       ORDER BY date_jalali DESC,id DESC''',
       (year, kind, int(kind or 0), q, '%' + q + '%', '%' + q + '%'))
-    return render_template('legacy_invoices.html', rows=rows, year=year, kind=kind, q=q, kinds=KIND_LABELS, pager=pager)
+    return render_template('legacy_invoices.html', rows=rows, year=year, years=year_options(),
+                           kind=kind, q=q, kinds=KIND_LABELS, pager=pager)
 
 
 @legacy.get('/legacy/invoices/<int:invoice_id>')
-@require_role('owner', 'manager')
+@require_login
 def invoice_detail(invoice_id):
     db = get_db()
     row = db.execute('SELECT * FROM legacy_invoices WHERE id=?', (invoice_id,)).fetchone()
@@ -86,7 +96,7 @@ def stock():
     summary = db.execute('''SELECT COUNT(*) products,SUM(quantity) total_units,
       SUM(CASE WHEN quantity<0 THEN 1 ELSE 0 END) negative_products
       FROM legacy_stock WHERE source_db=?''', (year,)).fetchone()
-    return render_template('legacy_stock.html', rows=rows, summary=summary, year=year,
+    return render_template('legacy_stock.html', rows=rows, summary=summary, year=year, years=year_options(),
                            q=q, only_negative=only_negative, pager=pager)
 
 
@@ -96,7 +106,7 @@ def checks():
     year = year_arg()
     rows, pager = paginate_query(get_db(), '''SELECT * FROM legacy_checks WHERE source_db=?
       ORDER BY due_date_jalali DESC,id DESC''', (year,))
-    return render_template('legacy_checks.html', rows=rows, year=year, pager=pager)
+    return render_template('legacy_checks.html', rows=rows, year=year, years=year_options(), pager=pager)
 
 
 @legacy.get('/legacy/accounts')
@@ -105,9 +115,9 @@ def accounts():
     db = get_db()
     year = year_arg()
     groups = db.execute('''SELECT j.kol_code,SUM(j.debit_rial) debit_rial,SUM(j.credit_rial) credit_rial,
-      (SELECT json_extract(r.payload_json,'$.CName') FROM legacy_records r
+      COALESCE((SELECT json_extract(r.payload_json,'$.CName') FROM legacy_records r
        WHERE r.source_db=j.source_db AND r.table_name='tbl_Kol'
-       AND CAST(json_extract(r.payload_json,'$.Code') AS INTEGER)=j.kol_code LIMIT 1) account_name
+       AND CAST(json_extract(r.payload_json,'$.Code') AS INTEGER)=j.kol_code LIMIT 1),MAX(j.account_name)) account_name
       FROM legacy_journal j WHERE j.source_db=? GROUP BY j.kol_code ORDER BY j.kol_code''', (year,)).fetchall()
     balances = {row['kol_code']: row for row in groups}
     def credit(code):
@@ -134,4 +144,5 @@ def accounts():
     recent, recent_pager = paginate_query(db, '''SELECT * FROM legacy_journal WHERE source_db=?
       ORDER BY date_jalali DESC,document_num DESC,id DESC''', (year,), param='page_journal')
     return render_template('legacy_accounts.html', groups=groups_page, totals=totals, recent=recent,
-                           year=year, groups_pager=groups_pager, recent_pager=recent_pager)
+                           year=year, years=year_options(), known_chart=year.startswith('db_'),
+                           groups_pager=groups_pager, recent_pager=recent_pager)

@@ -22,7 +22,7 @@ def current_settings(db=None):
       default_min_stock,default_price_type_id,sale_prefix,purchase_prefix,invoice_digits,
       default_payment_method,cash_label,bank_label,session_hours,login_max_attempts,
       login_lock_minutes,backup_enabled,backup_retention_days,backup_directory,
-      logo_revision,updated_at FROM shop_settings WHERE id=1''').fetchone()
+      logo_revision,calendar,updated_at FROM shop_settings WHERE id=1''').fetchone()
     if not row:
         raise RuntimeError('تنظیمات برنامه پیدا نشد.')
     return row
@@ -39,7 +39,7 @@ def settings_for_request():
 def page():
     db = get_db()
     tab = request.args.get('tab', 'identity')
-    if tab not in ('identity', 'inventory', 'sales', 'payments', 'backup', 'security', 'system', 'updates'):
+    if tab not in ('identity', 'inventory', 'sales', 'payments', 'backup', 'security', 'system', 'updates', 'calendar'):
         tab = 'identity'
     tiers = db.execute('SELECT * FROM price_types ORDER BY id').fetchall()
     tiers_page, tiers_pager = paginate_query(db, 'SELECT * FROM price_types ORDER BY id', param='page_tiers')
@@ -48,6 +48,7 @@ def page():
     runs, runs_pager = paginate_query(db, 'SELECT * FROM backup_runs ORDER BY id DESC', param='page_backups')
     users, users_pager = paginate_query(db, 'SELECT id,username,display_name,role,is_active FROM users ORDER BY id', param='page_users')
     version = db.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
+    import_count = db.execute('SELECT COUNT(*) FROM legacy_imports').fetchone()[0]
     update_info = db.execute('SELECT * FROM update_settings WHERE id=1').fetchone()
     from .updates import github_token, version as app_version, version_key
     update_status = data_dir() / 'update-status.txt'
@@ -62,6 +63,7 @@ def page():
                            branch=branch, runs=runs, users=users,
                            backup_default=str(data_dir() / 'backups'),
                            database_path=str(db_path()), schema_version=version,
+                           import_count=import_count,
                            web_address=request.host_url.rstrip('/'))
 
 
@@ -135,6 +137,12 @@ def update(section):
             values = (enabled, retention, directory)
             query = '''UPDATE shop_settings SET backup_enabled=?,backup_retention_days=?,backup_directory=?,
                 updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=1'''
+        elif section == 'calendar':
+            calendar = request.form.get('calendar', '')
+            if calendar not in ('jalali', 'gregorian'):
+                raise ValueError('نوع تقویم نامعتبر است.')
+            values = (calendar,)
+            query = '''UPDATE shop_settings SET calendar=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=1'''
         else:
             abort(404)
         with transaction(get_db()) as db:

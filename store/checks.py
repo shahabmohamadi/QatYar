@@ -1,31 +1,21 @@
 """Received/issued checks with due dates and audited settlement states."""
-import re
 import sqlite3
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from .auth import require_role
+from .calendar import format_date, parse_date
 from .db import get_db, transaction
 from .pagination import paginate_query
+from .settings import current_settings
 from .utils import audit, integer, required
 
 checks = Blueprint('checks', __name__)
-_DIGITS = str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789')
 _TRANSITIONS = {
     'pending': {'deposited', 'cleared', 'bounced', 'cancelled'},
     'deposited': {'cleared', 'bounced', 'cancelled'},
     'bounced': {'pending', 'cancelled'},
     'cleared': set(), 'cancelled': set(),
 }
-
-
-def jalali_date(value):
-    text = (value or '').strip().translate(_DIGITS)
-    if not re.fullmatch(r'14\d{2}/\d{2}/\d{2}', text):
-        raise ValueError('تاریخ سررسید باید به شکل ۱۴۰۵/۰۹/۰۱ باشد.')
-    month, day = (int(x) for x in text.split('/')[1:])
-    if month < 1 or month > 12 or day < 1 or day > (31 if month <= 6 else 30):
-        raise ValueError('تاریخ سررسید معتبر نیست.')
-    return text
 
 
 @checks.get('/checks')
@@ -61,7 +51,8 @@ def create_check():
         number = required(request.form.get('check_number'), 'شماره چک', 50)
         bank = request.form.get('bank_name', '').strip()[:100]
         amount = integer(request.form.get('amount_rial'), 'مبلغ چک', minimum=1)
-        due = jalali_date(request.form.get('due_date_jalali'))
+        due = format_date(parse_date(request.form.get('due_date_jalali'),
+                                     current_settings()['calendar']), 'jalali')
         note = request.form.get('note', '').strip()[:240]
         with transaction(get_db()) as db:
             if party_id and not db.execute('SELECT 1 FROM parties WHERE id=?', (party_id,)).fetchone():

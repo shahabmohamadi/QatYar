@@ -8,13 +8,17 @@ import unittest
 from unittest.mock import patch
 import json
 import re
+import zipfile
+from datetime import date
 
 from store.app import create_app
 from store.auth import password_hash
 from store.backup import create_backup, restore_backup, scheduled_backup
+from store.calendar import display_date, gregorian_to_jalali, parse_date
 from store.db import connect, db_path, transaction
 from store.legacy_import import activate_existing_parsian_catalog
 from store.opening_balances import activate_existing as activate_opening_balances, remaining_rial, summary as opening_summary
+from store.reports import _chart_data
 from store.updates import release, version, version_key
 
 
@@ -126,7 +130,7 @@ class StoreWorkflowTest(unittest.TestCase):
         self.assertIn('>0<'.encode(), self.client.get('/profit-loss?from=2000-01-01&to=2000-12-31').data)
         payments = self.client.get('/settings?tab=payments').data
         self.assertIn('بانک دوم'.encode(), payments)
-        self.assertNotIn('بکاپ و انتقال'.encode(), payments)
+        self.assertNotIn('action="/settings/transfer"'.encode(), payments)
         self.assertIn('به‌روزرسانی'.encode(), self.client.get('/settings?tab=updates').data)
 
     def test_github_release_requires_matching_asset_and_digest(self):
@@ -147,6 +151,80 @@ class StoreWorkflowTest(unittest.TestCase):
         self.assertEqual(result['digest'], 'sha256:' + 'a' * 64)
         with self.assertRaises(ValueError):
             release('acme/qatyar/other')
+
+    def test_accounting_transfer_continues_inventory_and_calendar(self):
+        manifest = {'format': 'qatyar-accounting-transfer', 'format_version': 1,
+                    'money_unit': 'toman', 'calendar': 'jalali', 'fiscal_year': '1405',
+                    'cash_opening': '1000', 'bank_opening': '2000'}
+        files = {
+            'products.csv': 'sku,name,brand,category,quantity,avg_cost,sale_price,cost_confirmed\nP-1,نمایشگر,,,5,100,150,1\n',
+            'parties.csv': 'code,name,kind,phone,opening_balance\nC-1,مشتری,both,,200\n',
+            'invoices.csv': 'document_id,kind,number,date,party_code,total,note\nD-1,sale,OLD-1,1405/09/04,C-1,300,\n',
+            'invoice_lines.csv': 'document_id,sku,quantity,unit_price,line_total\nD-1,P-1,2,150,300\n',
+            'checks.csv': 'number,direction,party_code,bank_name,amount,due_date,status,note\nCH-1,received,C-1,,500,1405/09/15,pending,\n',
+        }
+        package = io.BytesIO()
+        with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('manifest.json', json.dumps(manifest))
+            for name, content in files.items():
+                archive.writestr(name, content)
+        package.seek(0)
+        response = self.post('/settings/transfer', {'archive': (package, 'transfer.zip')})
+        self.assertIn('انتقال کامل شد'.encode(), response.data)
+        db = connect()
+        self.assertEqual(db.execute('SELECT quantity,avg_cost_rial FROM stock_balances').fetchone()[:], (5, 1000))
+        self.assertEqual(db.execute('SELECT amount_rial FROM product_prices').fetchone()[0], 1500)
+        self.assertEqual(db.execute('SELECT amount_rial FROM opening_party_balances').fetchone()[0], 2000)
+        self.assertEqual(db.execute('SELECT total_rial FROM legacy_invoices').fetchone()[0], 3000)
+        self.assertEqual(db.execute('SELECT status FROM payment_checks').fetchone()[0], 'pending')
+        self.assertEqual(_chart_data(db, date(2026, 11, 25), date(2026, 11, 25), 'jalali')['totals']['sales'], 3000)
+        db.close()
+        self.assertEqual(self.client.get('/legacy').status_code, 200)
+        self.assertIn('OLD-1'.encode(), self.client.get('/invoices').data)
+        self.assertNotIn('پارسیان'.encode(), self.client.get('/invoices').data)
+        self.assertIn('OLD-1'.encode(), self.client.get('/?from=1405%2F09%2F01&to=1405%2F09%2F30').data)
+        self.post('/settings/calendar', {'calendar': 'gregorian'})
+        self.assertIn('2026-11-25'.encode(), self.client.get('/invoices').data)
+        db = connect()
+        self.assertEqual(_chart_data(db, date(2026, 11, 25), date(2026, 11, 25), 'gregorian')['totals']['sales'], 3000)
+        db.close()
+        self.assertIn('3,000'.encode(), self.client.get('/?from=2026-11-25&to=2026-11-25').data)
+        self.post('/checks', {'direction': 'received', 'party_id': '1', 'check_number': 'CH-2',
+                              'amount_rial': '100', 'due_date_jalali': '2026-12-06'})
+        db = connect()
+        self.assertEqual(db.execute("SELECT due_date_jalali FROM payment_checks WHERE check_number='CH-2'").fetchone()[0], '1405/09/15')
+        db.close()
+        sale = self.post('/invoices/new/sale', {'party_id': '1', 'product_id': '1',
+                                                'quantity': '1', 'price_type_id': '1'})
+        self.assertIn('F-000001'.encode(), sale.data)
+        db = connect()
+        self.assertEqual(db.execute('SELECT quantity FROM stock_balances').fetchone()[0], 4)
+        db.close()
+
+    def test_calendar_round_trip_and_invalid_leap_day(self):
+        self.assertEqual(gregorian_to_jalali(date(2026, 11, 25)), (1405, 9, 4))
+        self.assertEqual(parse_date('۱۴۰۵/۰۹/۰۴', 'jalali'), date(2026, 11, 25))
+        self.assertEqual(display_date('2026-11-25 00:00:00', 'jalali'), '1405/09/04 03:30')
+        self.assertEqual(display_date('1405/09/04', 'gregorian'), '2026-11-25')
+        with self.assertRaises(ValueError):
+            parse_date('1404/12/30', 'jalali')
+
+    def test_transfer_rejects_unbalanced_document_without_partial_data(self):
+        manifest = {'format': 'qatyar-accounting-transfer', 'format_version': 1,
+                    'money_unit': 'rial', 'calendar': 'jalali', 'fiscal_year': '1405'}
+        package = io.BytesIO()
+        with zipfile.ZipFile(package, 'w') as archive:
+            archive.writestr('manifest.json', json.dumps(manifest))
+            archive.writestr('products.csv', 'sku,name,brand,category,quantity,avg_cost,sale_price,cost_confirmed\nP-1,قطعه,,,2,100,200,1\n')
+            archive.writestr('parties.csv', 'code,name,kind,phone,opening_balance\nC-1,مشتری,both,,0\n')
+            archive.writestr('journal.csv', 'document_number,date,kol_code,moeen_code,tafsili_code,account_name,debit,credit,note\n1,1405/09/04,10,0,0,صندوق,100,0,\n')
+        package.seek(0)
+        response = self.post('/settings/transfer', {'archive': (package, 'bad.zip')})
+        self.assertIn('جمع بدهکار و بستانکار'.encode(), response.data)
+        db = connect()
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM products').fetchone()[0], 0)
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM legacy_imports').fetchone()[0], 0)
+        db.close()
 
     def test_numbered_pages_and_return_forms(self):
         db = connect()
@@ -390,7 +468,7 @@ class StoreWorkflowTest(unittest.TestCase):
         self.assertEqual(activate_opening_balances(), {'parties': 1, 'net_party_rial': 123})
         self.assertIn('123'.encode(), self.client.get('/parties/1').data)
         response = self.post('/parties/1/opening-settlements', {'amount_rial': '123', 'method': 'cash'})
-        self.assertIn('تسویهٔ ماندهٔ پارسیان'.encode(), response.data)
+        self.assertIn('تسویهٔ ماندهٔ ابتدای دوره'.encode(), response.data)
         db = connect()
         self.assertEqual(remaining_rial(db, 1), 0)
         self.assertEqual(opening_summary(db)['cash_rial'], 1123)

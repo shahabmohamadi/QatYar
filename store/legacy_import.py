@@ -32,7 +32,7 @@ def as_int(value, label, warnings):
 def code(value):
     amount = number(value)
     if amount != int(amount):
-        raise ValueError('کد کالای کسری در فایل پارسیان پیدا شد.')
+        raise ValueError('کد کالای کسری در فایل دورهٔ قبل پیدا شد.')
     return str(int(amount))
 
 
@@ -41,21 +41,21 @@ def source_archive(path):
     archive = Path(path)
     with zipfile.ZipFile(archive) as source:
         if source.testzip() is not None:
-            raise ValueError('آرشیو پارسیان خراب است.')
+            raise ValueError('آرشیو دورهٔ قبل خراب است.')
         manifest = json.loads(source.read('manifest.json').decode('utf-8'))
         if manifest.get('format') != 'qatyar-parsian-export' or manifest.get('format_version') != 1 or manifest.get('money_unit') != 'rial':
-            raise ValueError('نوع یا واحد پول آرشیو پارسیان معتبر نیست.')
+            raise ValueError('نوع یا واحد پول آرشیو دورهٔ قبل معتبر نیست.')
         dbs = {item['name']: item['tables'] for item in manifest['databases']}
         if set(dbs) != set(SOURCE_DBS):
-            raise ValueError('هر دو سال مالی پارسیان باید در آرشیو باشند.')
+            raise ValueError('هر دو سال مالی دورهٔ قبل باید در آرشیو باشند.')
         expected_names = {'manifest.json'} | {f'{db}-{table}.jsonl' for db in SOURCE_DBS for table in TABLES}
         if set(source.namelist()) != expected_names:
-            raise ValueError('فهرست فایل‌های آرشیو پارسیان معتبر نیست.')
+            raise ValueError('فهرست فایل‌های آرشیو دورهٔ قبل معتبر نیست.')
         rows = {}
         raw = {}
         for db in SOURCE_DBS:
             if set(dbs[db]) != set(TABLES):
-                raise ValueError('فهرست جدول‌های پارسیان کامل نیست.')
+                raise ValueError('فهرست جدول‌های دورهٔ قبل کامل نیست.')
             rows[db] = {}
             for table in TABLES:
                 lines = source.read(f'{db}-{table}.jsonl').decode('utf-8').splitlines()
@@ -90,10 +90,10 @@ def import_parsian_archive(path, activate_current=True):
         if db.execute('SELECT id FROM legacy_imports WHERE source_sha256=?', (digest,)).fetchone():
             raise ValueError('این آرشیو قبلاً وارد شده است.')
         if db.execute('SELECT COUNT(*) FROM legacy_imports').fetchone()[0]:
-            raise ValueError('برای ورود دوبارهٔ داده‌های پارسیان، نخست نسخهٔ جدید و روش همگام‌سازی را آماده کنید.')
+            raise ValueError('برای ورود دوبارهٔ داده‌های دورهٔ قبل، نخست نسخهٔ جدید و روش همگام‌سازی را آماده کنید.')
         if activate_current and any(db.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone()
                                     for table in ('products', 'parties', 'invoices', 'money_movements')):
-            raise ValueError('فعال‌سازی داده‌های پارسیان فقط روی پایگاه دادهٔ خالی مجاز است.')
+            raise ValueError('فعال‌سازی داده‌های دورهٔ قبل فقط روی پایگاه دادهٔ خالی مجاز است.')
         warnings = Counter()
         record_count = sum(len(lines) for lines in raw.values())
         with transaction(db):
@@ -220,9 +220,9 @@ def import_parsian_archive(path, activate_current=True):
                         raise ValueError('برای فعال‌سازی، حساب مالک برنامه ابتدا باید ساخته شده باشد.')
                     owner_id = owner['id']
                     historical_tier = db.execute('''INSERT INTO price_types(code,label)
-                        VALUES ('parsian_last_sale','آخرین فروش پارسیان (تاریخی)')''').lastrowid
+                        VALUES ('parsian_last_sale','آخرین قیمت ثبت‌شده')''').lastrowid
                     for product_code, product in goods.items():
-                        name = (product.get('CName') or '').strip() or f'کالای پارسیان {product_code}'
+                        name = (product.get('CName') or '').strip() or f'کالای {product_code}'
                         category = groups.get(int(product.get('GroupCode') or 0), '')[:80]
                         min_stock = max(0, int(product.get('OrderPoint') or 0))
                         cur = db.execute('''INSERT INTO products(sku,name,category,min_stock,is_active,search_name,
@@ -238,7 +238,7 @@ def import_parsian_archive(path, activate_current=True):
                         if qty:
                             db.execute('''INSERT INTO stock_movements(branch_id,product_id,delta_qty,reason,note,created_by)
                                 VALUES (1,? ,?,'opening',?,?)''',
-                                (cur.lastrowid, qty, 'موجودی منتقل‌شده از پارسیان ۱۴۰۵', owner_id))
+                                (cur.lastrowid, qty, 'موجودی ابتدای دوره', owner_id))
                         sale_rial = latest_sale.get(product_code, (None, 0))[1]
                         if sale_rial > 0:
                             sale_rial = int(sale_rial)
@@ -252,7 +252,7 @@ def import_parsian_archive(path, activate_current=True):
                         phone = phones.get(account_key, {})
                         telephone = (phone.get('Mobile') or phone.get('Tel') or '')[:30]
                         cur = db.execute('''INSERT INTO parties(name,kind,phone,note) VALUES (?,'both',?,?)''',
-                                         (name, telephone, f'شناسه پارسیان {source_db}: {_account_key(*account_key)}'))
+                                         (name, telephone, f'شناسه انتقال {source_db}: {_account_key(*account_key)}'))
                         db.execute('''INSERT INTO legacy_party_map(source_db,kol_code,moeen_code,tafsili_code,party_id)
                             VALUES (?,?,?,?,?)''', (source_db, *account_key, cur.lastrowid))
                     warnings['unconfirmed_imported_costs'] = len(goods)
@@ -276,7 +276,7 @@ def activate_existing_parsian_catalog():
         with transaction(db):
             source = db.execute('SELECT id FROM legacy_imports ORDER BY id DESC LIMIT 1').fetchone()
             if not source:
-                raise ValueError('دادهٔ پارسیان در این پایگاه داده وجود ندارد.')
+                raise ValueError('دادهٔ دورهٔ قبل در این پایگاه داده وجود ندارد.')
             owner = db.execute("SELECT id FROM users WHERE role='owner' ORDER BY id LIMIT 1").fetchone()
             if not owner:
                 raise ValueError('حساب مالک پیدا نشد.')
@@ -285,14 +285,14 @@ def activate_existing_parsian_catalog():
             mapped = db.execute('''SELECT COUNT(*) FROM products p JOIN legacy_stock s ON s.product_code=p.sku
                 WHERE s.import_id=? AND s.source_db='db_1405' ''', (source['id'],)).fetchone()[0]
             if mapped != source_products:
-                raise ValueError('همهٔ کالاهای پارسیان در کاتالوگ فعلی پیدا نشدند.')
+                raise ValueError('همهٔ کالاهای دورهٔ قبل در کاتالوگ فعلی پیدا نشدند.')
             db.execute('''UPDATE products SET is_active=1 WHERE sku IN
                 (SELECT product_code FROM legacy_stock WHERE import_id=? AND source_db='db_1405')''',
                 (source['id'],))
             tier = db.execute("SELECT id FROM price_types WHERE code='parsian_last_sale'").fetchone()
             if not tier:
                 tier_id = db.execute('''INSERT INTO price_types(code,label)
-                    VALUES ('parsian_last_sale','آخرین فروش پارسیان (تاریخی)')''').lastrowid
+                    VALUES ('parsian_last_sale','آخرین قیمت ثبت‌شده')''').lastrowid
             else:
                 tier_id = tier['id']
             suggestions = db.execute('''SELECT p.id,s.last_sale_rial FROM products p

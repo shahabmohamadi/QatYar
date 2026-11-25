@@ -20,7 +20,6 @@
       <a href="{{ url_for('returns.list_returns') }}" class="{{ 'active' if request.blueprint == 'returns' else '' }}">↶ <span>برگشت فروش</span></a>
       <a href="{{ url_for('purchase_returns.list_returns') }}" class="{{ 'active' if request.blueprint == 'purchase_returns' else '' }}">↷ <span>برگشت خرید</span></a>
       <a href="{{ url_for('parties.list_parties') }}" class="{{ 'active' if request.blueprint == 'parties' else '' }}">♧ <span>طرف حساب‌ها</span></a>
-      {% if g.user['role'] in ('owner','manager') %}<a href="{{ url_for('legacy.overview') }}" class="{{ 'active' if request.blueprint == 'legacy' else '' }}">▧ <span>تاریخچه پارسیان</span></a>{% endif %}
       {% if g.user['role'] in ('owner','manager') %}<a href="{{ url_for('web.accounts') }}" class="{{ 'active' if request.endpoint == 'web.accounts' else '' }}">◉ <span>حساب‌ها و صندوق</span></a>{% endif %}
       {% if g.user['role'] in ('owner','manager') %}<a href="{{ url_for('web.profit_loss') }}" class="{{ 'active' if request.endpoint == 'web.profit_loss' else '' }}">◫ <span>سود و زیان</span></a>{% endif %}
       {% if g.user['role'] in ('owner','manager') %}<a href="{{ url_for('checks.list_checks') }}" class="{{ 'active' if request.blueprint == 'checks' else '' }}">▣ <span>چک‌ها</span></a>{% endif %}
