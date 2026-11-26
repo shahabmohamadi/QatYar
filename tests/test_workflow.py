@@ -294,6 +294,9 @@ class StoreWorkflowTest(unittest.TestCase):
                 self.assertEqual(self.client.get(route).status_code, 200)
 
     def test_update_settings_show_current_or_new_version(self):
+        update_page = self.client.get('/settings?tab=updates').data
+        self.assertIn(b'action="/settings/updates/check"', update_page)
+        self.assertNotIn('توکن خواندن مخزن خصوصی'.encode(), update_page)
         db = connect()
         self.assertEqual(db.execute('SELECT github_repo FROM update_settings WHERE id=1').fetchone()[0],
                          'shahabmohamadi/QatYar')

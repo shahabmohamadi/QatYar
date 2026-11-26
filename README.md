@@ -21,13 +21,6 @@
 powershell -ExecutionPolicy Bypass -File .\windows\install.ps1
 ```
 
-برای نصب مشتری با دسترسی به نسخه‌های مخزن خصوصی:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\windows\install.ps1 -GitHubTokenFile 'D:\setup\github-token.txt'
-```
-
-
 نصاب Python 3.12 را از فایل آفلاین همراه بسته، یا در صورت نبود آن از `winget`، آماده می‌کند؛ سپس وابستگی‌ها را از بسته‌های آفلاین یا `pip` می‌گیرد. نصب اینترنتی به اتصال ویندوز به اینترنت نیاز دارد. در اولین نصب، رمز مالک را در همان پنجره تعیین می‌کنید. داده در `C:\ProgramData\MobilePartsShop` و کد در `C:\Program Files\MobilePartsShop` قرار می‌گیرد.
 
 برنامه روی `http://localhost:8080` اجرا می‌شود؛ از دستگاه‌های دیگر شبکه با `http://IP-WINDOWS:8080` باز می‌شود. سرویس در بوت ویندوز بالا می‌آید و میانبر برای همهٔ کاربران در Start Menu، دسکتاپ عمومی و Startup ساخته می‌شود.
@@ -44,7 +37,8 @@ powershell -ExecutionPolicy Bypass -File 'C:\Program Files\MobilePartsShop\windo
 
 ## به‌روزرسانی از GitHub
 
-مالک در «تنظیمات ← به‌روزرسانی» نسخهٔ جدید را از مخزن ثابت برنامه بررسی می‌کند. متن تغییرات Release پیش از دکمهٔ اعمال نمایش داده می‌شود. انتشار باید یک فایل `QatYar-Windows.zip` با اثرانگشت SHA256 در GitHub Releases داشته باشد. نصب خودکار پیش از تغییر کد و دیتابیس بکاپ می‌گیرد. مخزن پیش‌فرض این پروژه `shahabmohamadi/QatYar` و خصوصی است. هر مشتری به توکن خواندن اختصاصی خود برای این مخزن نیاز دارد؛ طبق [مستندات GitHub](https://docs.github.com/en/rest/releases/releases) مجوز `Contents: read` برای بررسی Release کافی است. این مجوز به کد مخزن نیز دسترسی خواندن می‌دهد، بنابراین توکن را فقط برای فرد/نصب مورد اعتماد صادر کنید. هنگام نصب می‌توان فایل توکن را با `-GitHubTokenFile 'D:\setup\github-token.txt'` به نصاب داد؛ نصاب آن را در `C:\ProgramData\MobilePartsShop\github-token.txt` با دسترسی محدود به Administrators و SYSTEM ذخیره می‌کند. توکن از فرم وب دریافت نمی‌شود.
+مالک در «تنظیمات ← به‌روزرسانی» نسخهٔ جدید را از مخزن عمومی برنامه بررسی می‌کند؛ برای این مخزن توکن لازم نیست. متن تغییرات Release پیش از دکمهٔ اعمال نمایش داده می‌شود. انتشار باید فایل `QatYar-Windows.zip` با اثرانگشت SHA256 داشته باشد. نصب خودکار پیش از تغییر کد و دیتابیس بکاپ می‌گیرد. مخزن پیش‌فرض `shahabmohamadi/QatYar` است.
+
 
 ## توسعه و آزمون محلی
 

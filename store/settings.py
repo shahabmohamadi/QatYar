@@ -50,7 +50,7 @@ def page():
     version = db.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
     import_count = db.execute('SELECT COUNT(*) FROM legacy_imports').fetchone()[0]
     update_info = db.execute('SELECT * FROM update_settings WHERE id=1').fetchone()
-    from .updates import github_token, version as app_version, version_key
+    from .updates import version as app_version, version_key
     update_status = data_dir() / 'update-status.txt'
     return render_template('settings.html', cfg=settings_for_request(), tiers=tiers,
                            tiers_page=tiers_page, tiers_pager=tiers_pager,
@@ -58,7 +58,6 @@ def page():
                            runs_pager=runs_pager, users_pager=users_pager,
                            active_tab=tab, update_info=update_info,
                            app_version=app_version(), version_key=version_key,
-                           token_configured=bool(github_token()),
                            update_status=update_status.read_text(encoding='utf-8') if update_status.exists() else '',
                            branch=branch, runs=runs, users=users,
                            backup_default=str(data_dir() / 'backups'),
