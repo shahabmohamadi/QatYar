@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory=$true)][string]$AssetApiUrl,
   [Parameter(Mandatory=$true)][string]$ExpectedSha256,
   [Parameter(Mandatory=$true)][string]$VersionTag

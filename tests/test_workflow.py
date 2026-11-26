@@ -142,6 +142,12 @@ class StoreWorkflowTest(unittest.TestCase):
         self.post('/settings/appearance', {'font_scale_percent': '200'})
         self.assertIn('--font-scale: 1.15', self.client.get('/settings?tab=appearance').get_data(as_text=True))
 
+    def test_windows_powershell_scripts_have_utf8_bom(self):
+        for script in Path('windows').glob('*.ps1'):
+            content = script.read_bytes()
+            if not content.isascii():
+                self.assertTrue(content.startswith(b'\xef\xbb\xbf'), f'{script} needs a UTF-8 BOM for Windows PowerShell')
+
     def test_github_release_requires_matching_asset_and_digest(self):
         class Response:
             def __enter__(self):
