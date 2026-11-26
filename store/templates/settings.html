@@ -4,8 +4,26 @@
 {% block content %}
 <div class="page-head"><div><span class="eyebrow">مدیریت برنامه</span><h1>تنظیمات فروشگاه</h1><p>هویت برنامه و قواعد کار روزانه را از اینجا مدیریت کنید.</p></div></div>
 <nav class="settings-nav" aria-label="بخش‌های تنظیمات">
-{% for key,label in [('identity','نام و لوگو'),('inventory','موجودی و شعبه'),('sales','فاکتور و قیمت'),('payments','پرداخت‌ها'),('calendar','تاریخ و تقویم'),('backup','بکاپ و انتقال داده'),('security','امنیت و کاربران'),('updates','به‌روزرسانی'),('system','اطلاعات سیستم')] %}<a class="{{ 'active' if active_tab==key else '' }}" href="{{ url_for('settings.page',tab=key) }}">{{ label }}</a>{% endfor %}
+{% for key,label in [('identity','نام و لوگو'),('appearance','نمایش و فونت'),('inventory','موجودی و شعبه'),('sales','فاکتور و قیمت'),('payments','پرداخت‌ها'),('calendar','تاریخ و تقویم'),('backup','بکاپ و انتقال داده'),('security','امنیت و کاربران'),('updates','به‌روزرسانی'),('system','اطلاعات سیستم')] %}<a class="{{ 'active' if active_tab==key else '' }}" href="{{ url_for('settings.page',tab=key) }}">{{ label }}</a>{% endfor %}
 </nav>
+
+{% if active_tab=='appearance' %}
+<section class="panel settings-section" id="appearance">
+  <div class="panel-head"><div><span class="eyebrow">نمایش</span><h2>اندازه فونت صفحه‌ها</h2></div></div>
+  <form method="post" action="{{ url_for('settings.update',section='appearance') }}" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>اندازه فونت
+      <select name="font_scale_percent" data-font-scale-select>
+        {% for percent in (90,95,100,105,110,115,120,125) %}
+        <option value="{{ percent }}" {{ 'selected' if cfg['font_scale_percent']==percent else '' }}>{{ percent }}٪{{ ' (پیش‌فرض)' if percent==100 else '' }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="settings-form-footer"><button class="button primary">ذخیره اندازه فونت</button></div>
+  </form>
+  <p class="settings-helper">تغییر اندازه پس از ذخیره برای همهٔ کاربران و صفحه‌های برنامه اعمال می‌شود.</p>
+</section>
+{% endif %}
 
 {% if active_tab=='identity' %}
 <section class="panel settings-section" id="identity">

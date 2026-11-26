@@ -133,6 +133,15 @@ class StoreWorkflowTest(unittest.TestCase):
         self.assertNotIn('action="/settings/transfer"'.encode(), payments)
         self.assertIn('به‌روزرسانی'.encode(), self.client.get('/settings?tab=updates').data)
 
+    def test_font_size_setting_applies_to_all_pages(self):
+        page = self.client.get('/settings?tab=appearance').get_data(as_text=True)
+        self.assertIn('name="font_scale_percent"', page)
+        self.assertIn('--font-scale: 1.0', page)
+        self.post('/settings/appearance', {'font_scale_percent': '115'})
+        self.assertIn('--font-scale: 1.15', self.client.get('/products').get_data(as_text=True))
+        self.post('/settings/appearance', {'font_scale_percent': '200'})
+        self.assertIn('--font-scale: 1.15', self.client.get('/settings?tab=appearance').get_data(as_text=True))
+
     def test_github_release_requires_matching_asset_and_digest(self):
         class Response:
             def __enter__(self):

@@ -14,6 +14,10 @@
   document.querySelectorAll('form').forEach(form => form.addEventListener('submit', () => {
     form.querySelectorAll('input[name$="_rial"]').forEach(input => { input.value = plainDigits(input.value); });
   }));
+  const fontScale = document.querySelector('[data-font-scale-select]');
+  if (fontScale) fontScale.addEventListener('change', () => {
+    document.documentElement.style.setProperty('--font-scale', String(Number(fontScale.value) / 100));
+  });
   const updateForm = document.querySelector('[data-update-check-form]');
   if (updateForm) {
     const key = `qatyar-update-checked-${updateForm.action}`;

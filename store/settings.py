@@ -22,7 +22,7 @@ def current_settings(db=None):
       default_min_stock,default_price_type_id,sale_prefix,purchase_prefix,invoice_digits,
       default_payment_method,cash_label,bank_label,session_hours,login_max_attempts,
       login_lock_minutes,backup_enabled,backup_retention_days,backup_directory,
-      logo_revision,calendar,updated_at FROM shop_settings WHERE id=1''').fetchone()
+      logo_revision,calendar,font_scale_percent,updated_at FROM shop_settings WHERE id=1''').fetchone()
     if not row:
         raise RuntimeError('تنظیمات برنامه پیدا نشد.')
     return row
@@ -39,7 +39,7 @@ def settings_for_request():
 def page():
     db = get_db()
     tab = request.args.get('tab', 'identity')
-    if tab not in ('identity', 'inventory', 'sales', 'payments', 'backup', 'security', 'system', 'updates', 'calendar'):
+    if tab not in ('identity', 'appearance', 'inventory', 'sales', 'payments', 'backup', 'security', 'system', 'updates', 'calendar'):
         tab = 'identity'
     tiers = db.execute('SELECT * FROM price_types ORDER BY id').fetchall()
     tiers_page, tiers_pager = paginate_query(db, 'SELECT * FROM price_types ORDER BY id', param='page_tiers')
@@ -136,6 +136,9 @@ def update(section):
             values = (enabled, retention, directory)
             query = '''UPDATE shop_settings SET backup_enabled=?,backup_retention_days=?,backup_directory=?,
                 updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=1'''
+        elif section == 'appearance':
+            values = (integer(request.form.get('font_scale_percent'), 'اندازه فونت', minimum=90, maximum=125),)
+            query = '''UPDATE shop_settings SET font_scale_percent=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=1'''
         elif section == 'calendar':
             calendar = request.form.get('calendar', '')
             if calendar not in ('jalali', 'gregorian'):
