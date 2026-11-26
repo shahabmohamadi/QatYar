@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 import json
 import re
+import sqlite3
 import zipfile
 from datetime import date
 
@@ -139,8 +140,27 @@ class StoreWorkflowTest(unittest.TestCase):
         self.assertIn('--font-scale: 1.0', page)
         self.post('/settings/appearance', {'font_scale_percent': '115'})
         self.assertIn('--font-scale: 1.15', self.client.get('/products').get_data(as_text=True))
+        self.post('/settings/appearance', {'font_scale_percent': '75'})
+        self.assertIn('--font-scale: 0.75', self.client.get('/products').get_data(as_text=True))
         self.post('/settings/appearance', {'font_scale_percent': '200'})
-        self.assertIn('--font-scale: 1.15', self.client.get('/settings?tab=appearance').get_data(as_text=True))
+        self.assertIn('--font-scale: 0.75', self.client.get('/settings?tab=appearance').get_data(as_text=True))
+
+    def test_font_migration_preserves_settings_and_logo(self):
+        db = sqlite3.connect(':memory:')
+        db.execute('PRAGMA foreign_keys=ON')
+        migrations = Path('store/migrations')
+        for path in sorted(migrations.glob('*.sql')):
+            if path.name.startswith('016_'):
+                break
+            db.executescript(path.read_text(encoding='utf-8'))
+        db.execute('''UPDATE shop_settings SET app_name='فروشگاه آزمایشی',calendar='gregorian',
+            font_scale_percent=95,logo_content=?,logo_mime='image/png' WHERE id=1''', (b'logo-bytes',))
+        db.executescript((migrations / '016_smaller_font_and_update_size.sql').read_text(encoding='utf-8'))
+        self.assertEqual(db.execute('''SELECT app_name,calendar,font_scale_percent,logo_content
+            FROM shop_settings WHERE id=1''').fetchone(), ('فروشگاه آزمایشی', 'gregorian', 95, b'logo-bytes'))
+        db.execute('UPDATE shop_settings SET font_scale_percent=75 WHERE id=1')
+        self.assertEqual(db.execute('SELECT font_scale_percent FROM shop_settings').fetchone()[0], 75)
+        db.close()
 
     def test_windows_powershell_scripts_have_utf8_bom(self):
         for script in Path('windows').glob('*.ps1'):
@@ -164,6 +184,7 @@ class StoreWorkflowTest(unittest.TestCase):
         self.assertEqual(result['tag'], 'v1.2.0')
         self.assertEqual(version_key(result['tag']), (1, 2, 0))
         self.assertEqual(result['digest'], 'sha256:' + 'a' * 64)
+        self.assertEqual(result['size'], 1000)
         with self.assertRaises(ValueError):
             release('acme/qatyar/other')
 
@@ -318,13 +339,25 @@ class StoreWorkflowTest(unittest.TestCase):
         db.close()
         result = {'tag': 'v' + version(), 'notes': 'اصلاحات',
                   'url': 'https://api.github.com/repos/shahabmohamadi/QatYar/releases/assets/1',
-                  'digest': 'sha256:' + 'a' * 64}
+                  'digest': 'sha256:' + 'a' * 64, 'size': 1000}
         with patch('store.updates.release', return_value=result):
             current = self.post('/settings/updates/check', {})
         self.assertIn('نسخه فعلی به‌روز است.'.encode(), current.data)
         with patch('store.updates.release', return_value={**result, 'tag': 'v9.0.0'}):
             newer = self.post('/settings/updates/check', {})
         self.assertIn('اعمال این نسخه'.encode(), newer.data)
+        self.assertIn(b'data-update-progress', newer.data)
+        self.assertEqual(self.client.get('/settings/updates/progress').json['state'], 'idle')
+        db = connect()
+        self.assertEqual(db.execute('SELECT asset_size FROM update_settings WHERE id=1').fetchone()[0], 1000)
+        db.close()
+        archive = Path(os.environ['STORE_DATA_DIR']) / 'updates' / 'v9.0.0' / 'QatYar-Windows.zip'
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(b'x' * 500)
+        progress = Path(os.environ['STORE_DATA_DIR']) / 'update-progress.json'
+        progress.write_text(json.dumps({'tag': 'v9.0.0', 'state': 'running', 'stage': 'download',
+                                        'percent': 5, 'message': 'در حال دریافت'}), encoding='utf-8')
+        self.assertEqual(self.client.get('/settings/updates/progress').json['percent'], 25)
 
     def test_csrf_and_permissions(self):
         self.assertEqual(self.client.post('/products', data={'sku': 'X', 'name': 'bad'}).status_code, 400)

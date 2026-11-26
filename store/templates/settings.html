@@ -14,7 +14,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>اندازه فونت
       <select name="font_scale_percent" data-font-scale-select>
-        {% for percent in (90,95,100,105,110,115,120,125) %}
+        {% for percent in (75,80,85,90,95,100,105,110,115,120,125) %}
         <option value="{{ percent }}" {{ 'selected' if cfg['font_scale_percent']==percent else '' }}>{{ percent }}٪{{ ' (پیش‌فرض)' if percent==100 else '' }}</option>
         {% endfor %}
       </select>
@@ -121,11 +121,15 @@
 
 {% if active_tab=='updates' %}
 <section class="panel settings-section" id="updates"><div class="panel-head"><h2>به‌روزرسانی از GitHub</h2></div>
-<div class="detail-grid"><div><small>نسخه نصب‌شده</small><strong>{{ app_version }}</strong></div><div><small>آخرین بررسی</small><strong>{{ show_date(update_info['checked_at']) if update_info['checked_at'] else 'هنوز بررسی نشده' }}</strong></div></div>
+<div class="detail-grid"><div><small>نسخه نصب‌شده</small><strong data-installed-version>{{ app_version }}</strong></div><div><small>آخرین بررسی</small><strong>{{ show_date(update_info['checked_at']) if update_info['checked_at'] else 'هنوز بررسی نشده' }}</strong></div></div>
 <div class="setting-note">مخزن نسخه‌ها: <strong class="ltr">{{ update_info['github_repo'] }}</strong></div>
 {% if update_info['github_repo'] %}<form method="post" action="{{ url_for('updates.check') }}" data-update-check-form><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button ghost">بررسی نسخه جدید</button></form>{% endif %}
 {% if update_info['release_tag'] %}<div class="panel-head inner"><h2>نسخه {{ update_info['release_tag'] }}</h2></div><p>تغییرات نسخه:</p><pre class="release-notes">{{ update_info['release_notes'] or 'یادداشت تغییرات ثبت نشده است.' }}</pre>
 {% if version_key(update_info['release_tag']) > version_key(app_version) %}<form method="post" action="{{ url_for('updates.apply') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button primary">اعمال این نسخه</button></form>{% else %}<p class="settings-helper">نسخه فعلی به‌روز است.</p>{% endif %}{% endif %}
+<div class="update-progress" data-update-progress data-url="{{ url_for('updates.progress') }}" role="status" aria-live="polite" hidden>
+  <div class="update-progress-head"><strong data-update-progress-message>در حال آماده‌سازی به‌روزرسانی</strong><span data-update-progress-percent>۰٪</span></div>
+  <progress value="0" max="100" aria-label="درصد پیشرفت به‌روزرسانی"></progress>
+</div>
 {% if update_info['github_repo'] %}<p class="settings-helper" data-update-check-status>پس از ورود به این بخش، نسخهٔ مخزن بررسی می‌شود.</p>{% endif %}
 {% if update_status %}<p class="setting-note">{{ update_status }}</p>{% endif %}
 <p class="settings-helper">نسخه‌های این مخزن عمومی بدون توکن قابل بررسی‌اند. نسخه باید در GitHub Releases با فایل QatYar-Windows.zip و اثرانگشت SHA256 منتشر شده باشد. پیش از نصب از داده و کد بکاپ گرفته می‌شود.</p></section>

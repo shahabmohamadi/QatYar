@@ -32,6 +32,34 @@
         .catch(() => { if (status) status.textContent = 'بررسی خودکار انجام نشد. از دکمهٔ بررسی نسخه جدید استفاده کنید.'; });
     }
   }
+  const progressPanel = document.querySelector('[data-update-progress]');
+  if (progressPanel) {
+    const progressBar = progressPanel.querySelector('progress');
+    const progressMessage = progressPanel.querySelector('[data-update-progress-message]');
+    const progressPercent = progressPanel.querySelector('[data-update-progress-percent]');
+    const installedVersion = document.querySelector('[data-installed-version]')?.textContent.trim();
+    const pollProgress = () => fetch(progressPanel.dataset.url, {credentials: 'same-origin', cache: 'no-store'})
+      .then(response => { if (!response.ok) throw new Error('Connection unavailable'); return response.json(); })
+      .then(progress => {
+        if (progress.state === 'idle') { progressPanel.hidden = true; clearInterval(timer); return; }
+        progressPanel.hidden = false;
+        progressPanel.classList.toggle('error', progress.state === 'error');
+        progressBar.value = progress.percent;
+        progressPercent.textContent = `${progress.percent}٪`;
+        progressMessage.textContent = progress.message;
+        if (progress.state === 'done' || progress.state === 'error') {
+          clearInterval(timer);
+          if (progress.state === 'done' && progress.tag.replace(/^v/, '') !== installedVersion) {
+            setTimeout(() => location.reload(), 1200);
+          }
+        }
+      })
+      .catch(() => {
+        if (!progressPanel.hidden) progressMessage.textContent = 'ارتباط موقتاً قطع شد؛ پس از راه‌اندازی دوباره ادامه می‌دهیم.';
+      });
+    const timer = setInterval(pollProgress, 1500);
+    pollProgress();
+  }
   const lines = document.getElementById('invoice-lines');
   if (!lines) return;
   const kind = lines.dataset.kind;

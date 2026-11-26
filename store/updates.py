@@ -4,9 +4,10 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import time
 import urllib.request
 
-from flask import Blueprint, abort, flash, g, redirect, request, url_for
+from flask import Blueprint, abort, flash, g, jsonify, redirect, request, url_for
 
 from .auth import require_role
 from .db import data_dir, get_db, transaction
@@ -62,7 +63,51 @@ def release(repo):
     if not re.fullmatch(r'https://api\.github\.com/repos/' + re.escape(repo) + r'/releases/assets/\d+', url):
         raise ValueError('نشانی فایل انتشار معتبر نیست.')
     return {'tag': tag, 'notes': (info.get('body') or '')[:20000],
-            'url': url, 'digest': asset['digest']}
+            'url': url, 'digest': asset['digest'], 'size': asset['size']}
+
+
+def progress_path():
+    return data_dir() / 'update-progress.json'
+
+
+def save_progress(payload):
+    path = progress_path()
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
+    os.replace(temporary, path)
+
+
+def progress_snapshot():
+    path = progress_path()
+    if not path.exists():
+        return {'state': 'idle', 'percent': 0}
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8-sig'))
+        tag = payload['tag']
+        state = payload['state']
+        stage = payload['stage']
+        percent = max(0, min(100, int(payload['percent'])))
+        message = str(payload['message'])[:300]
+        if not version_key(tag) or state not in ('running', 'done', 'error'):
+            raise ValueError('Invalid update progress')
+        latest = get_db().execute('SELECT release_tag,asset_size FROM update_settings WHERE id=1').fetchone()
+        if tag != latest['release_tag']:
+            return {'state': 'idle', 'percent': 0}
+        if state == 'running' and stage == 'download' and latest['asset_size']:
+            archive = data_dir() / 'updates' / tag / ASSET
+            if archive.exists():
+                percent = max(percent, min(44, 5 + (archive.stat().st_size * 40 // latest['asset_size'])))
+        if state == 'running' and time.time() - path.stat().st_mtime > 1800:
+            state, message = 'error', 'فرآیند به‌روزرسانی بیش از ۳۰ دقیقه پاسخ نداده است.'
+        return {'tag': tag, 'state': state, 'stage': stage, 'percent': percent, 'message': message}
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return {'state': 'idle', 'percent': 0}
+
+
+@updates.get('/settings/updates/progress')
+@require_role('owner')
+def progress():
+    return jsonify(progress_snapshot())
 
 
 @updates.post('/settings/updates/repo')
@@ -74,7 +119,7 @@ def set_repo():
     else:
         with transaction(get_db()) as db:
             db.execute('''UPDATE update_settings SET github_repo=?,release_tag='',release_notes='',
-                asset_url='',asset_digest='',checked_at=NULL WHERE id=1''', (repo,))
+                asset_url='',asset_digest='',asset_size=0,checked_at=NULL WHERE id=1''', (repo,))
             audit(db, 'updates.repo', 'update_settings', 1, {'repo': repo})
         flash('مخزن به‌روزرسانی ذخیره شد.', 'success')
     return redirect(url_for('settings.page', tab='updates'))
@@ -88,8 +133,8 @@ def check():
         candidate = release(repo)
         with transaction(get_db()) as db:
             db.execute('''UPDATE update_settings SET release_tag=?,release_notes=?,asset_url=?,
-                asset_digest=?,checked_at=CURRENT_TIMESTAMP WHERE id=1''',
-                (candidate['tag'],candidate['notes'],candidate['url'],candidate['digest']))
+                asset_digest=?,asset_size=?,checked_at=CURRENT_TIMESTAMP WHERE id=1''',
+                (candidate['tag'],candidate['notes'],candidate['url'],candidate['digest'],candidate['size']))
             audit(db, 'updates.check', 'update_settings', 1, {'tag': candidate['tag']})
         flash('اطلاعات نسخه از GitHub دریافت شد.', 'success')
     except Exception as exc:
@@ -109,16 +154,25 @@ def apply():
         if version_key(row['release_tag']) <= (version_key(version()) or (0,0,0)):
             raise ValueError('نسخهٔ جدیدتری موجود نیست.')
         candidate = release(row['github_repo'])
-        if (candidate['tag'],candidate['url'],candidate['digest']) != (row['release_tag'],row['asset_url'],row['asset_digest']):
+        if (candidate['tag'],candidate['url'],candidate['digest'],candidate['size']) != (row['release_tag'],row['asset_url'],row['asset_digest'],row['asset_size']):
             raise ValueError('نسخه تغییر کرده است؛ تغییرات جدید را دوباره بررسی کنید.')
+        if progress_snapshot().get('state') == 'running':
+            raise ValueError('به‌روزرسانی دیگری در حال اجرا است.')
         script = Path(__file__).resolve().parent.parent / 'windows' / 'update.ps1'
-        subprocess.Popen(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(script),
-                          '-AssetApiUrl',candidate['url'],'-ExpectedSha256',candidate['digest'][7:],
-                          '-VersionTag',candidate['tag']],
-                         creationflags=subprocess.CREATE_NO_WINDOW)
+        save_progress({'tag': candidate['tag'], 'state': 'running', 'stage': 'starting',
+                       'percent': 1, 'message': 'در حال آغاز به‌روزرسانی'})
+        try:
+            subprocess.Popen(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(script),
+                              '-AssetApiUrl',candidate['url'],'-ExpectedSha256',candidate['digest'][7:],
+                              '-VersionTag',candidate['tag']],
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+        except OSError as exc:
+            save_progress({'tag': candidate['tag'], 'state': 'error', 'stage': 'starting',
+                           'percent': 1, 'message': 'اجرای برنامهٔ نصب ممکن نشد.'})
+            raise exc
         with transaction(get_db()) as db:
             audit(db, 'updates.apply', 'update_settings', 1, {'tag': candidate['tag']})
-        flash('به‌روزرسانی شروع شد. چند دقیقه دیگر صفحه را تازه‌سازی کنید.', 'success')
+        flash('به‌روزرسانی شروع شد؛ پیشرفت آن در همین صفحه نمایش داده می‌شود.', 'success')
     except Exception as exc:
         flash(str(exc)[:220], 'error')
     return redirect(url_for('settings.page', tab='updates'))

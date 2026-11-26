@@ -52,13 +52,14 @@ def page():
     update_info = db.execute('SELECT * FROM update_settings WHERE id=1').fetchone()
     from .updates import version as app_version, version_key
     update_status = data_dir() / 'update-status.txt'
+    progress_exists = (data_dir() / 'update-progress.json').exists()
     return render_template('settings.html', cfg=settings_for_request(), tiers=tiers,
                            tiers_page=tiers_page, tiers_pager=tiers_pager,
                            accounts=accounts, accounts_pager=accounts_pager,
                            runs_pager=runs_pager, users_pager=users_pager,
                            active_tab=tab, update_info=update_info,
                            app_version=app_version(), version_key=version_key,
-                           update_status=update_status.read_text(encoding='utf-8') if update_status.exists() else '',
+                           update_status=update_status.read_text(encoding='utf-8-sig') if update_status.exists() and not progress_exists else '',
                            branch=branch, runs=runs, users=users,
                            backup_default=str(data_dir() / 'backups'),
                            database_path=str(db_path()), schema_version=version,
@@ -137,7 +138,7 @@ def update(section):
             query = '''UPDATE shop_settings SET backup_enabled=?,backup_retention_days=?,backup_directory=?,
                 updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=1'''
         elif section == 'appearance':
-            values = (integer(request.form.get('font_scale_percent'), 'اندازه فونت', minimum=90, maximum=125),)
+            values = (integer(request.form.get('font_scale_percent'), 'اندازه فونت', minimum=75, maximum=125),)
             query = '''UPDATE shop_settings SET font_scale_percent=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=1'''
         elif section == 'calendar':
             calendar = request.form.get('calendar', '')
