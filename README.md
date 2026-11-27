@@ -43,6 +43,8 @@ powershell -ExecutionPolicy Bypass -File 'C:\Program Files\MobilePartsShop\windo
 
 ورود با گوگل اختیاری است و فقط برای کاربرانی کار می‌کند که مالک، ایمیل تأییدشدهٔ آنان را در صفحهٔ «کاربران» ثبت کرده باشد. پس از ساخت OAuth Client از نوع Web application، متغیرهای `QATYAR_GOOGLE_CLIENT_ID`، `QATYAR_GOOGLE_CLIENT_SECRET` و `QATYAR_GOOGLE_REDIRECT_URI` را روی میزبان برنامه تنظیم کنید. مسیر redirect باید دقیقاً `/login/google/callback` باشد و برای دسترسی شبکه‌ای با HTTPS ارائه شود؛ HTTP فقط برای `localhost` یا `127.0.0.1` پذیرفته می‌شود. شناسه و رمز OAuth را در مخزن قرار ندهید. تا پیش از تنظیم این موارد، دکمهٔ گوگل غیرفعال است و ورود با نام کاربری و رمز ادامه دارد.
 
+آزمون سرور موقت GitHub Actions با دادهٔ جداگانه و حساب `admin / admin` اجرا می‌شود و دادهٔ نصب ویندوز را استفاده نمی‌کند.
+
 
 ## توسعه و آزمون محلی
 
