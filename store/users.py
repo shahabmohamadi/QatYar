@@ -1,5 +1,6 @@
 """Owner-managed staff accounts."""
 import sqlite3
+import re
 
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 from werkzeug.security import check_password_hash
@@ -15,7 +16,7 @@ users = Blueprint('users', __name__)
 @users.get('/users')
 @require_role('owner')
 def list_users():
-    rows, pager = paginate_query(get_db(), 'SELECT id,username,display_name,role,is_active,created_at FROM users ORDER BY id')
+    rows, pager = paginate_query(get_db(), 'SELECT id,username,display_name,role,is_active,google_email,created_at FROM users ORDER BY id')
     return render_template('users.html', users=rows, pager=pager)
 
 
@@ -53,6 +54,25 @@ def toggle_user(user_id):
             db.execute('UPDATE users SET is_active=? WHERE id=?', (1 - row['is_active'], user_id))
             db.execute('DELETE FROM sessions WHERE user_id=?', (user_id,))
             audit(db, 'user.toggle', 'user', user_id)
+    return redirect(url_for('users.list_users'))
+
+
+@users.post('/users/<int:user_id>/google-email')
+@require_role('owner')
+def set_google_email(user_id):
+    email = request.form.get('google_email', '').strip().lower()
+    if email and (len(email) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email)):
+        flash('نشانی ایمیل معتبر نیست.', 'error')
+        return redirect(url_for('users.list_users'))
+    try:
+        with transaction(get_db()) as db:
+            if not db.execute('SELECT 1 FROM users WHERE id=?', (user_id,)).fetchone():
+                raise ValueError('کاربر پیدا نشد.')
+            db.execute('UPDATE users SET google_email=?,google_sub=NULL WHERE id=?', (email or None, user_id))
+            audit(db, 'user.google.email', 'user', user_id)
+        flash('ایمیل گوگل کاربر ذخیره شد.', 'success')
+    except (ValueError, sqlite3.IntegrityError) as exc:
+        flash(str(exc), 'error')
     return redirect(url_for('users.list_users'))
 
 

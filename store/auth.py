@@ -66,6 +66,25 @@ def check_csrf() -> None:
         abort(400, description='درخواست نامعتبر است. صفحه را تازه‌سازی کنید.')
 
 
+def issue_session(user_id: int, action: str = 'login'):
+    from .settings import current_settings
+    hours = current_settings()['session_hours']
+    now = datetime.now(timezone.utc)
+    token = secrets.token_urlsafe(40)
+    csrf = secrets.token_urlsafe(32)
+    expiry = (now + timedelta(hours=hours)).strftime('%Y-%m-%d %H:%M:%S')
+    with transaction(get_db()) as db:
+        db.execute('DELETE FROM sessions WHERE expires_at<=CURRENT_TIMESTAMP')
+        db.execute('INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES (?,?,?,?)',
+                   (hashlib.sha256(token.encode()).hexdigest(), user_id, csrf, expiry))
+        db.execute('INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id) VALUES (?,?,?,?)',
+                   (user_id, action, 'user', user_id))
+    response = redirect(url_for('web.dashboard'))
+    response.set_cookie('store_session', token, httponly=True, samesite='Lax',
+                        secure=request.is_secure, max_age=hours * 3600)
+    return response
+
+
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
     if g.user:
@@ -89,26 +108,16 @@ def login():
             row = get_db().execute('SELECT id,password_hash FROM users WHERE username=? AND is_active=1', (username,)).fetchone()
             if row and check_password_hash(row['password_hash'], password):
                 _failed.pop(key, None)
-                token = secrets.token_urlsafe(40)
-                csrf = secrets.token_urlsafe(32)
-                session_hours = login_settings['session_hours']
-                expiry = (now + timedelta(hours=session_hours)).strftime('%Y-%m-%d %H:%M:%S')
-                with transaction(get_db()) as db:
-                    db.execute('DELETE FROM sessions WHERE expires_at<=CURRENT_TIMESTAMP')
-                    db.execute('INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES (?,?,?,?)',
-                               (hashlib.sha256(token.encode()).hexdigest(), row['id'], csrf, expiry))
-                    db.execute('INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id) VALUES (?,?,?,?)',
-                               (row['id'], 'login', 'user', row['id']))
                 target = request.args.get('next', '')
                 if not target.startswith('/') or target.startswith('//') or '\\' in target:
                     target = url_for('web.dashboard')
-                response = redirect(target)
-                response.set_cookie('store_session', token, httponly=True, samesite='Lax',
-                                    secure=request.is_secure, max_age=session_hours * 3600)
+                response = issue_session(row['id'])
+                response.headers['Location'] = target
                 return response
             _failed[key] = (count + 1, now + timedelta(minutes=login_settings['login_lock_minutes']))
             flash('نام کاربری یا رمز عبور درست نیست.', 'error')
-    return render_template('login.html', login_csrf=login_csrf)
+    from .google_login import google_config
+    return render_template('login.html', login_csrf=login_csrf, google_login_enabled=bool(google_config()))
 
 
 @auth.post('/logout')

@@ -4,6 +4,7 @@ import os
 from flask import Flask, g, render_template, request
 
 from .auth import auth, check_csrf, load_user
+from .google_login import google_login
 from .backup import backup
 from .catalog import catalog
 from .calendar import display_date
@@ -38,6 +39,7 @@ def create_app():
     app.config['SECRET_KEY'] = secret_path.read_bytes()
     app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024
     app.register_blueprint(auth)
+    app.register_blueprint(google_login)
     app.register_blueprint(catalog)
     app.register_blueprint(checks)
     app.register_blueprint(invoices)

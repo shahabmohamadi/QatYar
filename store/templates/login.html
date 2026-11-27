@@ -1,5 +1,26 @@
 {% extends 'base.html' %}
 {% block title %}ورود | {{ cfg['app_name'] }}{% endblock %}
 {% block public %}
-<div class="login-page"><section class="login-brand"><img class="login-mark" src="{{ url_for('settings.logo', v=cfg['logo_revision']) }}" alt="لوگوی {{ cfg['app_name'] }}"><p class="eyebrow">{{ cfg['app_tagline'] }}</p><h1>{{ cfg['app_name'] }}<br>برای فروشگاه شما.</h1><p>قیمت‌های متنوع، موجودی دقیق، فاکتورهای خرید و فروش و حساب طرف‌ها در یک جا.</p><div class="login-chips"><span>قیمت‌گذاری چندگانه</span><span>گردش موجودی</span><span>حساب‌های شفاف</span></div></section><section class="login-side"><div class="login-card"><span class="form-kicker">خوش آمدید</span><h2>ورود به حساب کاربری</h2><p class="muted">برای دسترسی به اطلاعات فروشگاه وارد شوید.</p>{% with messages = get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}<form method="post" class="stack"><input type="hidden" name="login_csrf" value="{{ login_csrf }}"><label>نام کاربری<input name="username" autocomplete="username" required autofocus></label><label>رمز عبور<input name="password" type="password" autocomplete="current-password" required></label><button class="button primary full" type="submit">ورود به فروشگاه <span>←</span></button></form><small class="muted">دسترسی فقط برای کارکنان مجاز فروشگاه است.</small></div></section></div>
+<div class="login-page login-v2">
+  <div class="login-frame">
+    <section class="login-side login-v2-form">
+      <div class="login-card">
+        <div class="login-logo"><img src="{{ url_for('settings.logo', v=cfg['logo_revision']) }}" alt=""><div><strong>{{ cfg['app_name'] }}</strong><small>{{ cfg['app_tagline'] }}</small></div></div>
+        <span class="form-kicker">خوش آمدید</span>
+        <h1>به {{ cfg['app_name'] }} خوش آمدید</h1>
+        <p class="muted">برای ورود به حساب کاربری، اطلاعات خود را وارد کنید.</p>
+        {% with messages = get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="flash {{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
+        <form method="post" class="stack login-v2-fields"><input type="hidden" name="login_csrf" value="{{ login_csrf }}">
+          <label>نام کاربری<div class="login-input"><span aria-hidden="true">♙</span><input name="username" autocomplete="username" required autofocus placeholder="نام کاربری"></div></label>
+          <label>رمز عبور<div class="login-input"><span aria-hidden="true">♙</span><input name="password" type="password" autocomplete="current-password" required placeholder="رمز عبور"></div></label>
+          <button class="button primary full" type="submit">ورود <span aria-hidden="true">↪</span></button>
+        </form>
+        <div class="login-divider"><span>یا</span></div>
+        {% if google_login_enabled %}<a class="button google-button full" href="{{ url_for('google_login.start') }}"><span class="google-mark" aria-hidden="true">G</span> ورود با حساب Google</a>{% else %}<span class="button google-button full is-disabled" aria-disabled="true"><span class="google-mark" aria-hidden="true">G</span> ورود با حساب Google</span><p class="login-setup-note">ورود با گوگل پس از تنظیم OAuth و اتصال ایمیل در بخش کاربران فعال می‌شود.</p>{% endif %}
+        <p class="login-security">◈ امنیت اطلاعات شما اولویت ماست.</p>
+      </div>
+    </section>
+    <section class="login-visual" aria-label="معرفی نرم‌افزار"><div class="login-visual-content"><span class="login-visual-eyebrow">{{ cfg['app_name'] }}</span><h2>مدیریت مالی،<br>ساده‌تر از همیشه</h2><ul><li><span>▥</span> گزارش‌های جامع و دقیق</li><li><span>▤</span> مدیریت آسان فاکتورها</li><li><span>◈</span> کنترل خرید، فروش و موجودی</li></ul></div><div class="login-device" aria-hidden="true"><div class="device-top"><i></i><i></i><i></i><span>{{ cfg['app_name'] }}</span></div><div class="device-content"><div class="device-side"><b></b><b></b><b></b><b></b></div><div class="device-main"><div class="device-cards"><b></b><b></b><b></b></div><div class="device-chart"><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div></div></section>
+  </div>
+</div>
 {% endblock %}

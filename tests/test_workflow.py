@@ -162,6 +162,36 @@ class StoreWorkflowTest(unittest.TestCase):
         self.assertEqual(db.execute('SELECT font_scale_percent FROM shop_settings').fetchone()[0], 75)
         db.close()
 
+    def test_google_login_requires_owner_link_and_oauth_state(self):
+        self.post('/users/1/google-email', {'google_email': 'owner@gmail.com'})
+        self.post('/logout', {})
+        self.assertIn('ورود با حساب Google'.encode(), self.client.get('/login').data)
+        env = {'QATYAR_GOOGLE_CLIENT_ID': 'test-client',
+               'QATYAR_GOOGLE_CLIENT_SECRET': 'test-secret',
+               'QATYAR_GOOGLE_REDIRECT_URI': 'http://localhost:8080/login/google/callback'}
+        with patch.dict(os.environ, env):
+            start = self.client.get('/login/google')
+            self.assertEqual(start.status_code, 302)
+            self.assertIn('accounts.google.com', start.headers['Location'])
+            with self.client.session_transaction() as browser_session:
+                state = browser_session['google_oauth']['state']
+            bad = self.client.get('/login/google/callback?state=wrong&code=fake')
+            self.assertEqual(bad.status_code, 302)
+            self.assertNotIn('store_session=', bad.headers.get('Set-Cookie', ''))
+            self.client.get('/login/google')
+            with self.client.session_transaction() as browser_session:
+                state = browser_session['google_oauth']['state']
+            with patch('store.google_login._read_json', side_effect=[
+                {'access_token': 'test-access'},
+                {'sub': 'google-owner-123', 'email': 'owner@gmail.com', 'email_verified': True},
+            ]):
+                response = self.client.get('/login/google/callback?state=' + state + '&code=fake')
+            self.assertEqual(response.status_code, 302)
+            self.assertIn('store_session=', response.headers['Set-Cookie'])
+        db = connect()
+        self.assertEqual(db.execute('SELECT google_sub FROM users WHERE id=1').fetchone()[0], 'google-owner-123')
+        db.close()
+
     def test_windows_powershell_scripts_have_utf8_bom(self):
         for script in Path('windows').glob('*.ps1'):
             content = script.read_bytes()
